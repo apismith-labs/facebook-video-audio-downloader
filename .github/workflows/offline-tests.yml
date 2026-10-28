@@ -1,0 +1,74 @@
+name: offline-tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  # A developer's .env must never turn a test into a billable Run.
+  APIFY_SKIP_DOTENV: '1'
+
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Run tests
+        run: python3 -m unittest discover -s tests/python -v
+
+  node:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Check syntax
+        run: |
+          for file in examples/nodejs/*.mjs; do node --check "$file"; done
+      - name: Run tests
+        run: node --test tests/node/*.test.mjs
+
+  go:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+      - name: Vet
+        working-directory: examples/go
+        run: go vet ./...
+      - name: Test
+        working-directory: examples/go
+        run: go test ./... -v
+
+  java:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Run tests
+        working-directory: examples/java
+        run: ./run_tests.sh
+
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Check relative links
+        run: python3 scripts/check_doc_links.py

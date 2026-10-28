@@ -1,0 +1,19 @@
+.env
+.env.local
+.env.*.local
+
+__pycache__/
+*.py[cod]
+node_modules/
+package-lock.json
+
+# Downloaded media, transcripts, and journals may contain signed CDN links and
+# third-party content. Keep them out of version control by default.
+sample-output/generated/
+downloads/
+*.part
+*.tmp
+
+.DS_Store
+.idea/
+.vscode/

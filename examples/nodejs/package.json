@@ -1,0 +1,17 @@
+{
+  "name": "facebook-video-audio-downloader-nodejs-examples",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Node.js client for the Facebook Video & Audio Downloader",
+  "license": "MIT",
+  "author": "APISmith",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "download": "node download.mjs",
+    "batch": "node batch-download.mjs",
+    "check": "node --check reliable-actor.mjs && node --check client.mjs && node --check media.mjs && node --check layout.mjs && node --check pipeline.mjs && node --check download.mjs && node --check batch-download.mjs"
+  }
+}

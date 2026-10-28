@@ -1,0 +1,271 @@
+{
+  "contractVersion": "1.0.0",
+  "evidenceStatus": "verified_from_build_api_and_live_runs",
+  "actor": {
+    "id": "apple_yang/facebook-transcript-scraper-api",
+    "actId": "qoPsXcbeGbncRrc4N",
+    "buildNumber": "0.0.18",
+    "buildId": "fZIlpYENof2jYqIJc",
+    "buildFinishedAtUtc": "2026-10-19T03:13:17.800Z",
+    "retrievedAt": "2026-10-28",
+    "defaultRunOptions": {
+      "build": "latest",
+      "memoryMbytes": 4096,
+      "timeoutSecs": 3600
+    },
+    "sources": [
+      "https://api.apify.com/v2/acts/apple_yang~facebook-transcript-scraper-api",
+      "https://api.apify.com/v2/actor-builds/fZIlpYENof2jYqIJc",
+      "https://api.apify.com/v2/actors/qoPsXcbeGbncRrc4N/builds/fZIlpYENof2jYqIJc/openapi.json",
+      "https://apify.com/apple_yang/facebook-transcript-scraper-api.md"
+    ]
+  },
+  "schemaProvenance": {
+    "input": "Verbatim inputSchema string returned by the fixed build endpoint.",
+    "dataset": "Verbatim actorDefinition.storages.dataset.fields returned by the fixed build endpoint.",
+    "actorOutput": "Verbatim actorDefinition.output returned by the fixed build endpoint.",
+    "warning": "Field presence and runtime values are not guaranteed by this schema. It declares every dataset field as required; historical integration notes for sibling Actors show that Actor output can omit fields the schema marks required. Treat this document as a schema snapshot, not a runtime guarantee."
+  },
+  "input": {
+    "required": [
+      "videoUrl"
+    ],
+    "modes": [
+      "single_transcript"
+    ],
+    "fields": {
+      "videoUrl": {
+        "type": "string",
+        "title": "The URL of the facebook",
+        "description": "The URL of the facebook you want to get the data from.",
+        "editor": "textfield",
+        "prefill": "https://www.facebook.com/61567530334836/videos/1115932820735409/",
+        "runtimeDefault": "none; the field is required"
+      }
+    },
+    "absentFields": {
+      "bulkUrls": "Not present in this Actor. Batch work requires one Run per URL.",
+      "usernames": "Not present in this Actor. There is no profile mode.",
+      "sessionid": "Not present in this Actor. Public videos only.",
+      "enhancedcrawl": "Not present in this Actor."
+    }
+  },
+  "output": {
+    "actorOutput": {
+      "actorOutputSchemaVersion": 1,
+      "title": "Output schema of Social media scraper",
+      "properties": {
+        "results": {
+          "type": "string",
+          "title": "Results",
+          "template": "{{links.apiDefaultDatasetUrl}}/items"
+        }
+      }
+    },
+    "datasetFields": {
+      "url": "string",
+      "title": "string",
+      "videoUrl": "string",
+      "audioUrl": "string",
+      "createTime": "integer",
+      "playCount": "integer",
+      "commentCount": "integer",
+      "reactionCount": "integer",
+      "likesCount": "integer",
+      "shareCount": "integer",
+      "duration": "number",
+      "nickname": "string",
+      "avatarUri": "string",
+      "text": "string",
+      "segments": "array<{start:number,end:number,text:string}>",
+      "errMsg": "string",
+      "timestamp": "string"
+    },
+    "datasetDeclaredRequired": [
+      "url",
+      "title",
+      "videoUrl",
+      "audioUrl",
+      "createTime",
+      "playCount",
+      "commentCount",
+      "reactionCount",
+      "likesCount",
+      "shareCount",
+      "duration",
+      "nickname",
+      "avatarUri",
+      "text",
+      "segments",
+      "errMsg",
+      "timestamp"
+    ],
+    "documentedButNotInReadme": [
+      "likesCount",
+      "shareCount"
+    ],
+    "readmeOnlyFields": [],
+    "cardinality": "unknown; one Run per URL is expected to yield one item, but the schema does not constrain it"
+  },
+  "pricing": {
+    "model": "PAY_PER_EVENT",
+    "capturedAt": "2026-10-28",
+    "events": {
+      "apify-default-dataset-item": {
+        "title": "result",
+        "priceUsd": 0.001,
+        "primary": true,
+        "note": "Charged per dataset item."
+      },
+      "speech2text": {
+        "title": "Cost-Effective Audio-to-Text (Auto)",
+        "unit": "minute",
+        "minimumBilledMinutes": 1,
+        "tieredPriceUsdPerMinute": {
+          "FREE": 0.0045,
+          "BRONZE": 0.0035,
+          "SILVER": 0.003,
+          "GOLD": 0.002,
+          "PLATINUM": 0.002,
+          "DIAMOND": 0.002
+        },
+        "note": "Documented as $0.002 to $0.0045 per minute depending on plan; any duration under one minute is billed as one minute."
+      }
+    },
+    "storePageClaim": "$1.00 / 1,000 results",
+    "storePageClaimScope": "Covers the dataset-item event only; it does not include the speech2text event."
+  },
+  "limits": {
+    "freePlanVideoDurationMinutes": 5,
+    "freePlanSource": "Actor README: free users can only try video transcription with a duration of no more than 5 minutes.",
+    "paidPlanDurationLimit": "Documented as not limited by duration.",
+    "publicContentOnly": true,
+    "audioOnly": "The Actor transcribes audio; text burned into video frames is not extracted."
+  },
+  "liveVerification": {
+    "date": "2026-10-28",
+    "runsCreated": 19,
+    "usageTotalUsd": 0.0595,
+    "buildNumber": "0.0.18",
+    "buildId": "fZIlpYENof2jYqIJc",
+    "videoDurationSeconds": 42.261,
+    "datasetItemCount": 1,
+    "segmentCount": 13,
+    "chargedEventCounts": {
+      "apify-default-dataset-item": 1,
+      "speech2text": 1
+    },
+    "successRunChargeUsd": 0.0055,
+    "failedRunChargeUsd": 0.001,
+    "urlForms": {
+      "share": {
+        "status": "confirmed",
+        "runId": "nLYG45kAbUi9k3QIw",
+        "attempts": 1
+      },
+      "watch": {
+        "status": "confirmed",
+        "runId": "zvjedku9xh0Qjp0Xb",
+        "attempts": 1
+      },
+      "page_video": {
+        "status": "confirmed",
+        "runId": "yFQeTefhJW8dJAXA9",
+        "attempts": 1
+      },
+      "reel": {
+        "status": "confirmed",
+        "runId": "FTmCQYemjjcRmanbR",
+        "attempts": 1
+      },
+      "video_php": {
+        "status": "rejected_by_facebook",
+        "attempts": 3,
+        "detail": "Three attempts returned Meta's generic error page while watch/?v= on the same video id succeeded."
+      },
+      "video": {
+        "status": "rejected_by_facebook",
+        "attempts": 3,
+        "detail": "Bare /videos/<id>/ returned Not Found, while /<page>/videos/<same id>/ succeeded in the same minute."
+      },
+      "short_link": {
+        "status": "unverified",
+        "detail": "No fb.watch code was available; the client validator accepts and forwards the form unchanged."
+      }
+    },
+    "clientsVerifiedLive": [
+      "python",
+      "nodejs",
+      "go",
+      "java"
+    ],
+    "batchVerifiedLive": {
+      "rows": 2,
+      "success": 2,
+      "rowIdSemantics": "CSV line number",
+      "runIds": [
+        "CSLnsRnS9xsbaxc6J",
+        "thfdnoDSa1nQrakgs"
+      ]
+    },
+    "transientFailureObservation": "2 of 11 otherwise-valid attempts returned actor_error with errMsg 'no audio url found' while the same URL succeeded on retry; treat that errMsg as retryable.",
+    "defectsFixedAfterLiveTesting": [
+      "Java readDotEnv stripped only double quotes, so a single-quoted .env value failed charge-cap validation.",
+      "Go --json omitted datasetComplete.",
+      "Java emitted empty strings for absent error/title/nickname instead of null."
+    ],
+    "confirmed": [
+      "The pinned build id was used by the service; client build verification passed on every Run.",
+      "share, watch, page_video, and reel URLs each returned the same 42.261 s video with a populated text and 13 segments.",
+      "The submitted URL is echoed verbatim in the item url field; no form is rewritten upstream.",
+      "All 17 declared dataset fields were present, including likesCount and shareCount.",
+      "duration is seconds (42.261); createTime is Unix seconds (1791609487).",
+      "segments are {start, end, text} in seconds; 13 segments, start <= end.",
+      "Billing is the two-event model; 42.261 s was billed as one started minute.",
+      "A failing Run still writes one dataset item and is charged $0.001 without a speech2text event.",
+      "All four reference clients completed a live Run and agreed on status, exit code, and JSON keys.",
+      "Batch execution mapped rowId to the CSV line number and reported the same total as its own estimate."
+    ],
+    "record": "docs/audit/live_run_20261028.md"
+  },
+  "unverified": [
+    "Whether a Run always returns exactly one dataset item per submitted URL.",
+    "Real response shape for an unplayable, private, deleted, or region-locked video.",
+    "Whether errMsg and a non-empty text can coexist, and which one is authoritative.",
+    "Whether fb.watch short links are accepted and resolved by the Actor; short links cannot be minted outside the Facebook apps, so the form is accepted by the clients but unproven upstream (share links were confirmed live on 2026-10-28).",
+    "Whether /video.php?v= and bare /videos/<id>/ resolve for any video: three attempts each hit Facebook-side errors, so the Actor's handling of those pages is unknown rather than disproved.",
+    "Whether a legacy (pre-reel) page upload behaves differently from the reel-sourced id used in the 2026-10-28 matrix.",
+    "Whether the speech2text event is charged when a video has no speech or transcription fails.",
+    "Whether likesCount and shareCount are populated on every item type.",
+    "Bulk ordering does not apply because this Actor has no bulk mode."
+  ],
+  "downloadLayer": {
+    "verifiedOn": "2026-10-28",
+    "mediaHost": "fbcdn.net",
+    "videoContentType": "video/mp4",
+    "audioContainer": "audio-only MP4 (AAC), extension .mp4",
+    "requiresUserAgent": false,
+    "requiresReferer": false,
+    "rangeSupported": true,
+    "linkLifetime": "hours; exact TTL unverified",
+    "redactionFields": [
+      "videoUrl",
+      "audioUrl",
+      "avatarUri"
+    ],
+    "layout": {
+      "folder": "<urlForm>-<id>[-<titleSlug>]",
+      "video": "video.mp4",
+      "audio": "audio.mp4 | audio.m4a | audio.mp3",
+      "transcript": "transcript.txt",
+      "segments": "segments.json",
+      "metadata": "metadata.json",
+      "manifest": "manifest.json"
+    },
+    "unverified": [
+      "Exact signature TTL.",
+      "Whether a video without an audio track yields a usable audioUrl.",
+      "Whether CDN throughput is throttled above a few concurrent downloads."
+    ]
+  }
+}
