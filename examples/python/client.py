@@ -1,4 +1,4 @@
-"""Synchronous integration API for the Facebook Transcript Actor.
+"""Synchronous integration API for the Facebook Video & Audio Downloader Actor.
 
 Importing this module does not read credentials, load dotenv files, create files, or access the
 network. Configuration is read when a function is called.
@@ -22,7 +22,6 @@ if __package__:  # Package import, for example ``examples.python.client``.
         RestTransport,
         build_run_input,
         execute_input,
-        normalize_segments,
         safe_error,
         validate_build,
         validate_run_charge_cap,
@@ -37,7 +36,6 @@ else:  # Copy the two modules beside one another and ``import client``.
         RestTransport,
         build_run_input,
         execute_input,
-        normalize_segments,
         safe_error,
         validate_build,
         validate_run_charge_cap,
@@ -89,18 +87,18 @@ _SHARE = re.compile(r"^/share/(?P<kind>[vr])/(?P<code>[A-Za-z0-9_-]+)/?$", re.IG
 _SHORT = re.compile(r"^/(?P<code>[A-Za-z0-9_-]+)/?$")
 _DIGITS = re.compile(r"^\d+$")
 _ACTOR_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._~/-]*$")
-_BUSINESS_STATUSES = {"success", "actor_error", "empty", "no_transcript", "unknown", "run_failed"}
+_BUSINESS_STATUSES = {"success", "actor_error", "empty", "unknown", "run_failed"}
 
 
-class TranscriptClientError(Exception):
+class DownloaderError(Exception):
     """Base class for errors callers should handle explicitly."""
 
 
-class ConfigurationError(TranscriptClientError, ValueError):
+class ConfigurationError(DownloaderError, ValueError):
     """Invalid URL, credentials, timeout, Actor ID, Build, or charge-cap configuration."""
 
 
-class ProtocolError(TranscriptClientError):
+class ProtocolError(DownloaderError):
     """The runner returned a malformed or contradictory result."""
 
     def __init__(self, message: str, *, run_id: str | None = None, dataset_id: str | None = None):
@@ -109,11 +107,11 @@ class ProtocolError(TranscriptClientError):
         self.dataset_id = dataset_id
 
 
-class CreationUnknownError(TranscriptClientError):
+class CreationUnknownError(DownloaderError):
     """The create POST may have produced a Run; do not call again blindly."""
 
 
-class TranscriptTransportError(TranscriptClientError):
+class DownloaderTransportError(DownloaderError):
     """A definite transport or post-creation retrieval failure."""
 
     def __init__(self, message: str, *, run_id: str | None = None, dataset_id: str | None = None):
@@ -123,12 +121,10 @@ class TranscriptTransportError(TranscriptClientError):
 
 
 @dataclass(frozen=True)
-class TranscriptResult:
+class MediaResult:
     """Outcome of one Actor Run. ``items`` retains the Actor's original item fields."""
 
     status: str
-    text: str | None
-    segments: list[dict[str, Any]]
     items: list[dict[str, Any]]
     run_id: str | None
     dataset_id: str | None
@@ -275,7 +271,7 @@ def _select_actor(actor_id: str | None) -> str:
     return selected.strip()
 
 
-def get_transcript(
+def resolve_media(
     url: str,
     *,
     token: str | None = None,
@@ -289,7 +285,7 @@ def get_transcript(
     row_id: str | None = None,
     transport: Any = None,
     journal: Any = None,
-) -> TranscriptResult:
+) -> MediaResult:
     """Run one public Facebook video URL through the pinned Actor Build.
 
     ``token`` overrides ``APIFY_TOKEN``. ``transport`` and ``journal`` are injection seams for
@@ -342,7 +338,7 @@ def get_transcript(
             row_id=row_id,
         )
     except ApiError as exc:
-        raise TranscriptTransportError(str(exc)) from None
+        raise DownloaderTransportError(str(exc)) from None
 
     if not isinstance(outcome, dict) or not isinstance(outcome.get("status"), str):
         raise ProtocolError("Runner returned a malformed result")
@@ -352,7 +348,7 @@ def get_transcript(
     if status == "creation_unknown":
         raise CreationUnknownError(
             "Run creation outcome is unknown (Run ID unavailable): "
-            f"{outcome.get('error') or 'reconcile before retrying'}; do not call get_transcript again blindly"
+            f"{outcome.get('error') or 'reconcile before retrying'}; do not call resolve_media again blindly"
         )
     if status == "transport_error":
         if outcome.get("stage") == "build_mismatch":
@@ -366,9 +362,9 @@ def get_transcript(
         if run_id_out:
             detail = (
                 f"{detail}; Run {run_id_out} already exists. Reconcile or resume that Run; "
-                "do not call get_transcript again to replace it"
+                "do not call resolve_media again to replace it"
             )
-        raise TranscriptTransportError(detail, run_id=run_id_out, dataset_id=dataset_id)
+        raise DownloaderTransportError(detail, run_id=run_id_out, dataset_id=dataset_id)
     if status not in STATUSES or status not in _BUSINESS_STATUSES:
         raise ProtocolError(f"Runner returned unsupported status: {status!r}", run_id=run_id_out, dataset_id=dataset_id)
 
@@ -378,10 +374,8 @@ def get_transcript(
     items: list[dict[str, Any]] = raw_items
 
     if status == "run_failed":
-        return TranscriptResult(
+        return MediaResult(
             status="run_failed",
-            text=None,
-            segments=[],
             items=items,
             run_id=run_id_out,
             dataset_id=dataset_id,
@@ -392,26 +386,18 @@ def get_transcript(
             dataset_complete=False,
         )
 
-    transcript_item = next(
-        (item for item in items if isinstance(item.get("text"), str) and item["text"].strip()),
-        None,
-    )
-    text = transcript_item.get("text") if transcript_item else None
-    segments = normalize_segments(transcript_item.get("segments")) if transcript_item else []
-    if status == "success" and text is None:
-        raise ProtocolError("Runner reported success without a non-empty transcript", run_id=run_id_out, dataset_id=dataset_id)
+    if status == "success" and not items:
+        raise ProtocolError("Runner reported success without a Dataset item", run_id=run_id_out, dataset_id=dataset_id)
 
-    metadata_item = transcript_item or (items[0] if items else {})
+    metadata_item = items[0] if items else {}
     duration = metadata_item.get("duration")
     if isinstance(duration, bool) or not isinstance(duration, (int, float)):
         duration = None
     title = metadata_item.get("title") if isinstance(metadata_item.get("title"), str) else None
     nickname = metadata_item.get("nickname") if isinstance(metadata_item.get("nickname"), str) else None
 
-    return TranscriptResult(
+    return MediaResult(
         status=status,
-        text=text,
-        segments=segments,
         items=items,
         run_id=run_id_out,
         dataset_id=dataset_id,
@@ -432,12 +418,11 @@ __all__ = [
     "ConfigurationError",
     "CreationUnknownError",
     "DEFAULT_ACTOR_ID",
+    "DownloaderError",
+    "DownloaderTransportError",
+    "MediaResult",
     "ProtocolError",
-    "TranscriptClientError",
-    "TranscriptResult",
-    "TranscriptTransportError",
-    "get_transcript",
-    "normalize_segments",
+    "resolve_media",
     "safe_error",
     "validate_video_url",
 ]

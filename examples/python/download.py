@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Download the video, audio, transcript, and metadata for one public Facebook video URL.
+"""Download the video, audio, and metadata for one public Facebook video URL.
 
-One invocation may create one billable Actor Run ($0.0055 for a video under one minute). The Run
-resolves the page into signed ``videoUrl`` / ``audioUrl`` links on fbcdn.net; those links are
-downloaded immediately because the signature expires.
+One invocation may create one billable Actor Run ($0.005). The Run resolves the page into signed
+``videoUrl`` / ``audioUrl`` links on fbcdn.net; those links are downloaded immediately because the
+signature expires.
 
 Exit codes: 0 downloaded (or already present), 2 bad configuration, 4 Actor reported an item error,
 5 empty Dataset, 7 unknown, 8 transport failure, 9 Run failed, 10 creation outcome unknown,
@@ -63,7 +63,7 @@ def make_progress(quiet: bool):
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Download video, audio, transcript, and metadata for one Facebook video URL.",
+        description="Download video, audio, and metadata for one Facebook video URL.",
         epilog=(
             "Example: python examples/python/download.py "
             "'https://www.facebook.com/watch/?v=1131784255863745' --audio --out downloads"
@@ -131,7 +131,7 @@ def main(argv=None) -> int:
     elif not args.quiet:
         if code == 0:
             files = ", ".join(Path(asset["path"]).name for asset in report["assets"]) or "no media"
-            print(f"{report['status']}: {report['outputDir']}  segments={report['segments']}  {files}")
+            print(f"{report['status']}: {report['outputDir']}  {files}")
         else:
             print(f"{report['status']}: {report.get('error') or 'no output'}", file=sys.stderr)
     if args.report:

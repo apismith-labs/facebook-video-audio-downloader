@@ -18,13 +18,13 @@ func TestClassifyItems(t *testing.T) {
 		{"empty", []any{}, "empty"},
 		{"nil", nil, "unknown"},
 		{"non object", []any{"nope"}, "unknown"},
-		{"errMsg wins", []any{map[string]any{"errMsg": "private", "text": "hello"}}, "actor_error"},
-		{"blank errMsg ignored", []any{map[string]any{"errMsg": "   ", "text": "hello"}}, "success"},
-		{"success", []any{map[string]any{"text": "hello"}}, "success"},
-		{"text null", []any{map[string]any{"text": nil}}, "no_transcript"},
-		{"text absent", []any{map[string]any{"title": "x"}}, "no_transcript"},
-		{"text empty", []any{map[string]any{"text": "  "}}, "no_transcript"},
-		{"text number", []any{map[string]any{"text": 42.0}}, "unknown"},
+		{"errMsg wins", []any{map[string]any{"errMsg": "private", "videoUrl": "https://x/a.mp4"}}, "actor_error"},
+		{"blank errMsg ignored", []any{map[string]any{"errMsg": "   ", "videoUrl": "https://x/a.mp4"}}, "success"},
+		{"success", []any{map[string]any{"audioUrl": "https://x/b.mp4"}}, "success"},
+		{"urls null", []any{map[string]any{"videoUrl": nil}}, "unknown"},
+		{"urls absent", []any{map[string]any{"title": "x"}}, "unknown"},
+		{"urls empty", []any{map[string]any{"videoUrl": "  "}}, "unknown"},
+		{"url number", []any{map[string]any{"videoUrl": 42.0}}, "unknown"},
 	}
 
 	for _, testCase := range cases {
@@ -44,29 +44,6 @@ func TestClassifyItemsMentionsErrMsg(t *testing.T) {
 	})
 	if !strings.Contains(message, "private") || !strings.Contains(message, "region") {
 		t.Fatalf("message = %q", message)
-	}
-}
-
-func TestNormalizeSegments(t *testing.T) {
-	value := []any{
-		map[string]any{"start": 0.0, "end": 1.5, "text": "ok"},
-		map[string]any{"start": 1.0, "end": 2.0, "text": "ok2", "extra": true},
-		map[string]any{"start": 3.0, "end": 2.0, "text": "reversed"},
-		map[string]any{"start": -1.0, "end": 2.0, "text": "negative"},
-		map[string]any{"start": "0", "end": 2.0, "text": "string bound"},
-		map[string]any{"start": true, "end": 2.0, "text": "boolean bound"},
-		map[string]any{"start": 0.0, "end": 2.0},
-		"not an object",
-	}
-	result := NormalizeSegments(value)
-	if len(result) != 2 {
-		t.Fatalf("segments = %d, want 2: %+v", len(result), result)
-	}
-	if result[0]["text"] != "ok" || result[1]["text"] != "ok2" {
-		t.Fatalf("unexpected segments: %+v", result)
-	}
-	if NormalizeSegments(nil) == nil {
-		t.Fatal("a non-list must return an empty slice, not nil")
 	}
 }
 
@@ -175,7 +152,7 @@ func TestResumeIsGetOnly(t *testing.T) {
 		case strings.HasPrefix(path, "/actor-runs/"):
 			return succeededRun(), nil
 		case strings.HasPrefix(path, "/datasets/"):
-			return []any{transcriptItem()}, nil
+			return []any{mediaItem()}, nil
 		default:
 			return nil, &ApiError{Message: "unexpected path " + path, Status: 404}
 		}
@@ -183,7 +160,7 @@ func TestResumeIsGetOnly(t *testing.T) {
 
 	options := defaultOptions(transport)
 	options.RunID = "run-1"
-	result, err := GetTranscript(context.Background(), "https://www.facebook.com/watch/?v=1234567890", options)
+	result, err := ResolveMedia(context.Background(), "https://www.facebook.com/watch/?v=1234567890", options)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

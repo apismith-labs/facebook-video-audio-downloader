@@ -13,8 +13,8 @@ import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-/** URL validation plus the reusable {@code getTranscript} entry point. */
-public final class TranscriptClient {
+/** URL validation plus the reusable {@code resolveMedia} entry point. */
+public final class VideoClient {
     private static final int DEFAULT_DATASET_LIMIT = ReliableActor.DEFAULT_DATASET_LIMIT;
 
     private static final Set<String> ALLOWED_HOSTS = Set.of(
@@ -38,7 +38,7 @@ public final class TranscriptClient {
     private static final Pattern DIGITS = Pattern.compile("^\\d+$");
     private static final Pattern BUILD = Pattern.compile("^\\d+(?:\\.\\d+){0,2}$");
 
-    private TranscriptClient() {
+    private VideoClient() {
     }
 
     public static final class ConfigurationException extends Exception {
@@ -102,8 +102,6 @@ public final class TranscriptClient {
     /** Outcome of one Actor Run. Items keeps the Actor's original fields. */
     public record Result(
             String status,
-            String text,
-            List<Map<String, Object>> segments,
             List<Object> items,
             String runId,
             String datasetId,
@@ -303,7 +301,7 @@ public final class TranscriptClient {
         return amount;
     }
 
-    public static Result getTranscript(String url, Options options) throws ConfigurationException,
+    public static Result resolveMedia(String url, Options options) throws ConfigurationException,
             CreationUnknownException, TransportException, ProtocolException {
         String[] validated = validateVideoUrl(url);
         String canonical = validated[0];
@@ -335,7 +333,7 @@ public final class TranscriptClient {
         runOptions.actorId = options.actorId == null || options.actorId.isBlank()
                 ? ReliableActor.DEFAULT_ACTOR_ID
                 : options.actorId;
-        runOptions.input = Map.of("videoUrl", canonical);
+        runOptions.input = Map.of("videoUrls", List.of(canonical));
         runOptions.sourceUrl = canonical;
         if (options.journal != null) {
             runOptions.journal = options.journal;
@@ -355,7 +353,7 @@ public final class TranscriptClient {
             throw new CreationUnknownException(
                     "Run creation outcome is unknown (Run ID unavailable): "
                             + firstNonEmpty(outcome.error(), "reconcile before retrying")
-                            + "; do not call getTranscript again blindly");
+                            + "; do not call resolveMedia again blindly");
         }
         if ("transport_error".equals(outcome.status())) {
             if ("build_mismatch".equals(outcome.stage())) {
@@ -368,7 +366,7 @@ public final class TranscriptClient {
             String detail = firstNonEmpty(outcome.error(), "Apify transport failed");
             if (outcome.runId() != null && !outcome.runId().isBlank()) {
                 detail += "; Run " + outcome.runId()
-                        + " already exists. Reconcile or resume that Run; do not call getTranscript again to replace it";
+                        + " already exists. Reconcile or resume that Run; do not call resolveMedia again to replace it";
             }
             throw new TransportException(detail, outcome.runId(), outcome.datasetId());
         }
@@ -386,39 +384,22 @@ public final class TranscriptClient {
         }
 
         if ("run_failed".equals(outcome.status())) {
-            return new Result("run_failed", null, List.of(), items, outcome.runId(), outcome.datasetId(),
+            return new Result("run_failed", items, outcome.runId(), outcome.datasetId(),
                     url, canonical, form, firstNonEmpty(outcome.error(), "Actor Run failed"), false,
                     null, null, null);
         }
 
-        Map<String, Object> transcriptItem = null;
-        for (Object item : items) {
-            Map<String, Object> object = Json.asObject(item);
-            if (object.get("text") instanceof String text && !text.isBlank()) {
-                transcriptItem = object;
-                break;
-            }
-        }
-
-        String text = null;
-        List<Map<String, Object>> segments = List.of();
-        if (transcriptItem != null) {
-            text = (String) transcriptItem.get("text");
-            segments = ReliableActor.normalizeSegments(transcriptItem.get("segments"));
-        }
-        if ("success".equals(outcome.status()) && (text == null || text.isBlank())) {
-            throw new ProtocolException("Runner reported success without a non-empty transcript",
+        if ("success".equals(outcome.status()) && items.isEmpty()) {
+            throw new ProtocolException("Runner reported success without a Dataset item",
                     outcome.runId(), outcome.datasetId());
         }
 
-        Map<String, Object> metadata = transcriptItem != null
-                ? transcriptItem
-                : (items.isEmpty() ? Map.of() : Json.asObject(items.get(0)));
+        Map<String, Object> metadata = items.isEmpty() ? Map.of() : Json.asObject(items.get(0));
         String title = metadata.get("title") instanceof String value ? value : null;
         String nickname = metadata.get("nickname") instanceof String value ? value : null;
         Double duration = metadata.get("duration") instanceof Number number ? number.doubleValue() : null;
 
-        return new Result(outcome.status(), text, segments, items, outcome.runId(), outcome.datasetId(),
+        return new Result(outcome.status(), items, outcome.runId(), outcome.datasetId(),
                 url, canonical, form, outcome.error(), Boolean.TRUE.equals(outcome.datasetComplete()),
                 title, nickname, duration);
     }

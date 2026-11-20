@@ -92,7 +92,7 @@ class SanitiseTests(unittest.TestCase):
         "videoUrl": "https://scontent.xx.fbcdn.net/v/a.mp4?oh=1&oe=2&sig=3",
         "audioUrl": "https://scontent.xx.fbcdn.net/v/b.mp4?oh=1",
         "avatarUri": "https://scontent.xx.fbcdn.net/v/c.jpg?oh=1",
-        "text": "hello",
+        "likesCount": 33,
     }
 
     def test_signed_queries_are_stripped(self):
@@ -100,7 +100,7 @@ class SanitiseTests(unittest.TestCase):
         self.assertEqual(cleaned["videoUrl"], "https://scontent.xx.fbcdn.net/v/a.mp4")
         self.assertEqual(cleaned["audioUrl"], "https://scontent.xx.fbcdn.net/v/b.mp4")
         self.assertEqual(cleaned["avatarUri"], "https://scontent.xx.fbcdn.net/v/c.jpg")
-        self.assertEqual(cleaned["text"], "hello")
+        self.assertEqual(cleaned["likesCount"], 33)
 
     def test_opt_in_keeps_the_urls(self):
         cleaned = layout.sanitize_item(self.ITEM, keep_media_urls=True)
@@ -109,19 +109,6 @@ class SanitiseTests(unittest.TestCase):
     def test_original_item_is_not_mutated(self):
         layout.sanitize_item(self.ITEM)
         self.assertIn("sig=3", self.ITEM["videoUrl"])
-
-
-class SegmentTests(unittest.TestCase):
-    def test_invalid_segments_are_dropped(self):
-        segments = layout.transcript_segments([
-            {"start": 0, "end": 1.5, "text": "a"},
-            {"start": 2, "end": 1, "text": "reversed"},
-            {"start": "0", "end": 1, "text": "string start"},
-            {"start": True, "end": 1, "text": "bool"},
-            {"start": 1, "end": 2, "text": 5},
-            "not a dict",
-        ])
-        self.assertEqual(segments, [{"start": 0.0, "end": 1.5, "text": "a"}])
 
 
 if __name__ == "__main__":

@@ -70,15 +70,15 @@ func TestChooseOutputDir(t *testing.T) {
 
 func TestSanitizeItem(t *testing.T) {
 	item := map[string]any{
-		"videoUrl": "https://scontent.xx.fbcdn.net/v/a.mp4?oh=1&oe=2&sig=3",
-		"audioUrl": "https://scontent.xx.fbcdn.net/v/b.mp4?oh=1",
-		"text":     "hello",
+		"videoUrl":   "https://scontent.xx.fbcdn.net/v/a.mp4?oh=1&oe=2&sig=3",
+		"audioUrl":   "https://scontent.xx.fbcdn.net/v/b.mp4?oh=1",
+		"likesCount": 33,
 	}
 	cleaned := SanitizeItem(item, false)
 	if cleaned["videoUrl"] != "https://scontent.xx.fbcdn.net/v/a.mp4" {
 		t.Fatalf("videoUrl = %v", cleaned["videoUrl"])
 	}
-	if cleaned["text"] != "hello" {
+	if cleaned["likesCount"] != 33 {
 		t.Fatal("unrelated fields must survive")
 	}
 	if item["videoUrl"] != "https://scontent.xx.fbcdn.net/v/a.mp4?oh=1&oe=2&sig=3" {
@@ -87,20 +87,5 @@ func TestSanitizeItem(t *testing.T) {
 	kept := SanitizeItem(item, true)
 	if kept["videoUrl"] != item["videoUrl"] {
 		t.Fatal("opt-in should keep the signed URL")
-	}
-}
-
-func TestTranscriptSegments(t *testing.T) {
-	segments := TranscriptSegments([]map[string]any{
-		{"start": 0.0, "end": 1.5, "text": "a"},
-		{"start": 2.0, "end": 1.0, "text": "reversed"},
-		{"start": "0", "end": 1.0, "text": "string start"},
-		{"start": 1.0, "end": 2.0, "text": 5},
-	})
-	if len(segments) != 1 {
-		t.Fatalf("got %d segments, want 1", len(segments))
-	}
-	if segments[0]["text"] != "a" {
-		t.Fatalf("unexpected segment: %v", segments[0])
 	}
 }

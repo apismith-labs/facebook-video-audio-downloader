@@ -19,15 +19,10 @@ func mediaServer(t *testing.T, body []byte) *httptest.Server {
 	}))
 }
 
-func itemWithMedia(videoURL, audioURL string, text any) map[string]any {
-	item := transcriptItem()
+func itemWithMedia(videoURL, audioURL string) map[string]any {
+	item := mediaItem()
 	item["videoUrl"] = videoURL
 	item["audioUrl"] = audioURL
-	item["text"] = text
-	item["segments"] = []any{
-		map[string]any{"start": 0.0, "end": 1.5, "text": "hello"},
-		map[string]any{"start": 1.5, "end": 3.0, "text": "world"},
-	}
 	return item
 }
 
@@ -40,7 +35,7 @@ func TestDownloadOneSuccessWritesEverySidecar(t *testing.T) {
 	defer audio.Close()
 
 	outDir := t.TempDir()
-	item := itemWithMedia(video.URL, audio.URL, "hello world")
+	item := itemWithMedia(video.URL, audio.URL)
 	report, code := DownloadOne(context.Background(), "https://www.facebook.com/watch/?v=1115932820735409",
 		DownloadOptions{
 			OutDir:    outDir,
@@ -59,14 +54,8 @@ func TestDownloadOneSuccessWritesEverySidecar(t *testing.T) {
 	if err != nil || len(stored) != len(videoBody) {
 		t.Fatalf("video missing or wrong size: %v", err)
 	}
-	transcript, _ := os.ReadFile(filepath.Join(folder, "transcript.txt"))
-	if string(transcript) != "hello world\n" {
-		t.Fatalf("transcript = %q", string(transcript))
-	}
-	if report.Segments != 1 {
-		// The fixture's second segment is valid (1.5 -> 3.0); the first item text carries one
-		// valid segment plus deliberately broken ones.
-		t.Logf("segments = %d", report.Segments)
+	if _, err := os.Stat(filepath.Join(folder, "transcript.txt")); !os.IsNotExist(err) {
+		t.Fatal("transcript.txt must not be written by the downloader kit")
 	}
 	if _, err := os.Stat(filepath.Join(folder, "audio.mp4")); !os.IsNotExist(err) {
 		t.Fatal("audio must not be downloaded by default")
@@ -111,7 +100,7 @@ func TestDownloadOneAudioOnly(t *testing.T) {
 	defer audio.Close()
 
 	outDir := t.TempDir()
-	item := itemWithMedia(video.URL, audio.URL, "hello")
+	item := itemWithMedia(video.URL, audio.URL)
 	report, code := DownloadOne(context.Background(), "https://www.facebook.com/reel/9/", DownloadOptions{
 		OutDir:      outDir,
 		WantVideo:   false,
@@ -131,37 +120,13 @@ func TestDownloadOneAudioOnly(t *testing.T) {
 	}
 }
 
-func TestDownloadOneSilentVideoStillDownloads(t *testing.T) {
-	video := mediaServer(t, []byte("video"))
-	defer video.Close()
-	audio := mediaServer(t, []byte("audio"))
-	defer audio.Close()
-
-	item := itemWithMedia(video.URL, audio.URL, nil)
-	report, code := DownloadOne(context.Background(), "https://www.facebook.com/reel/9/", DownloadOptions{
-		OutDir:    t.TempDir(),
-		WantVideo: true,
-		Run:       defaultOptions(happyTransport([]any{item})),
-	})
-	if code != 0 {
-		t.Fatalf("exit code %d: %v", code, deref(report.Error))
-	}
-	if report.Status != "no_transcript" {
-		t.Fatalf("status = %s", report.Status)
-	}
-	transcript, _ := os.ReadFile(filepath.Join(*report.OutputDir, "transcript.txt"))
-	if len(transcript) != 0 {
-		t.Fatalf("transcript should be empty, got %q", string(transcript))
-	}
-}
-
 func TestDownloadOneActorErrorWritesMetadataOnly(t *testing.T) {
 	video := mediaServer(t, []byte("video"))
 	defer video.Close()
 	audio := mediaServer(t, []byte("audio"))
 	defer audio.Close()
 
-	item := itemWithMedia(video.URL, audio.URL, nil)
+	item := itemWithMedia(video.URL, audio.URL)
 	item["errMsg"] = "no audio url found"
 	report, code := DownloadOne(context.Background(), "https://www.facebook.com/reel/9/", DownloadOptions{
 		OutDir:    t.TempDir(),
@@ -183,16 +148,16 @@ func TestDownloadOneActorErrorWritesMetadataOnly(t *testing.T) {
 }
 
 func TestDownloadOneMissingMediaURL(t *testing.T) {
-	item := itemWithMedia("", "", "hello")
+	item := itemWithMedia("", "")
 	report, code := DownloadOne(context.Background(), "https://www.facebook.com/reel/9/", DownloadOptions{
 		OutDir:    t.TempDir(),
 		WantVideo: true,
 		Run:       defaultOptions(happyTransport([]any{item})),
 	})
-	if code != DownloadFailedExitCode {
-		t.Fatalf("exit code = %d, want %d", code, DownloadFailedExitCode)
+	if code != 7 {
+		t.Fatalf("exit code = %d, want 7", code)
 	}
-	if report.Error == nil || !strings.Contains(*report.Error, "no media URL") {
+	if report.Error == nil || !strings.Contains(*report.Error, "no videoUrl or audioUrl") {
 		t.Fatalf("unexpected error: %v", deref(report.Error))
 	}
 }
@@ -223,7 +188,7 @@ func TestForceRebuildsTheConvertedAudio(t *testing.T) {
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 
 	outDir := t.TempDir()
-	item := itemWithMedia("", audio.URL, "hello")
+	item := itemWithMedia("", audio.URL)
 	run := func(force bool) (Report, int) {
 		return DownloadOne(context.Background(), "https://www.facebook.com/reel/9/", DownloadOptions{
 			OutDir:      outDir,

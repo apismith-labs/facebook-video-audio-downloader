@@ -26,7 +26,7 @@ python3 examples/python/download.py 'https://www.facebook.com/watch/?v=113178425
 
 ```text
   video: 4.2 MB (100%)
-success: downloads/watch-1131784255863745-...  segments=13  video.mp4
+success: downloads/watch-1131784255863745-...  video.mp4
 ```
 
 Add the audio track and a converted container:
@@ -48,8 +48,6 @@ tree downloads/watch-1131784255863745-*/
 ```
 ├── video.mp4
 ├── audio.m4a
-├── transcript.txt
-├── segments.json
 ├── metadata.json
 └── manifest.json
 ```
@@ -63,7 +61,7 @@ tree downloads/watch-1131784255863745-*/
   "sourceUrl": "https://www.facebook.com/watch/?v=1131784255863745",
   "runId": "nLYG45kAbUi9k3QIw",
   "duration": 42.261,
-  "downloadedAt": "2026-10-28T05:21:16Z",
+  "downloadedAt": "2026-11-20T05:21:16Z",
   "assets": [{ "kind": "video", "bytes": 4382219, "sha256": "…" }]
 }
 ```
@@ -114,6 +112,6 @@ a Run.
 | --- | --- | --- |
 | Exit 2, `APIFY_TOKEN is required` | No token in `.env` or the environment | Set `APIFY_TOKEN` |
 | Exit 2, `url must use https://` | `http://` or a share text with extra characters | Pass the bare `https://` URL |
-| Exit 4, `no audio url found` | Known intermittent Actor failure | Re-run once with a new Run |
+| Exit 4, `no audio url found` | Actor reported an item error | Re-run once with a new Run |
 | Exit 11, `media server returned HTTP 403` | The signed link expired before the download | Re-run so a fresh link is minted |
 | `ffmpeg is required` | `--audio-format m4a`/`mp3` without ffmpeg | `brew install ffmpeg` or use `raw` |

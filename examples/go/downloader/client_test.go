@@ -72,23 +72,17 @@ func succeededRun() map[string]any {
 	}}
 }
 
-func transcriptItem() map[string]any {
+func mediaItem() map[string]any {
 	return map[string]any{
 		"url":        "https://www.facebook.com/watch/?v=1115932820735409",
 		"title":      "Q & A about sleeping",
 		"duration":   43.5,
 		"nickname":   "Dr. Shu",
-		"text":       " Hello, Dr.",
+		"videoUrl":   "https://scontent.xx.fbcdn.net/v/a.mp4?oh=1",
+		"audioUrl":   "https://scontent.xx.fbcdn.net/v/b.mp4?oh=1",
 		"errMsg":     "",
 		"likesCount": 75000,
 		"shareCount": 1200,
-		"segments": []any{
-			map[string]any{"start": 0.0, "end": 0.68, "text": " Hello, Dr."},
-			map[string]any{"start": 2.0, "end": 1.0, "text": "bad order"},
-			map[string]any{"start": -1.0, "end": 3.0, "text": "negative"},
-			map[string]any{"start": "x", "end": 3.0, "text": "not numeric"},
-			map[string]any{"start": 3.0, "end": 4.0},
-		},
 	}
 }
 
@@ -117,21 +111,15 @@ func defaultOptions(transport Transport) Options {
 	}
 }
 
-func TestGetTranscriptSuccess(t *testing.T) {
-	items := []any{transcriptItem()}
-	result, err := GetTranscript(context.Background(), "https://www.facebook.com/watch/?v=1234567890", defaultOptions(happyTransport(items)))
+func TestResolveMediaSuccess(t *testing.T) {
+	items := []any{mediaItem()}
+	result, err := ResolveMedia(context.Background(), "https://www.facebook.com/watch/?v=1234567890", defaultOptions(happyTransport(items)))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
 	if result.Status != "success" {
 		t.Fatalf("status = %q, want success", result.Status)
-	}
-	if result.Text != " Hello, Dr." {
-		t.Fatalf("text = %q", result.Text)
-	}
-	if len(result.Segments) != 1 {
-		t.Fatalf("segments = %d, want 1 (invalid entries must be dropped)", len(result.Segments))
 	}
 	if result.RunID != "run-1" || result.DatasetID != "ds-1" {
 		t.Fatalf("run/dataset = %q/%q", result.RunID, result.DatasetID)
@@ -153,8 +141,8 @@ func TestGetTranscriptSuccess(t *testing.T) {
 	}
 }
 
-func TestGetTranscriptEmptyDataset(t *testing.T) {
-	result, err := GetTranscript(context.Background(), "https://www.facebook.com/reel/1234567890/", defaultOptions(happyTransport([]any{})))
+func TestResolveMediaEmptyDataset(t *testing.T) {
+	result, err := ResolveMedia(context.Background(), "https://www.facebook.com/reel/1234567890/", defaultOptions(happyTransport([]any{})))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -166,10 +154,10 @@ func TestGetTranscriptEmptyDataset(t *testing.T) {
 	}
 }
 
-func TestGetTranscriptActorErrorWins(t *testing.T) {
-	item := transcriptItem()
+func TestResolveMediaActorErrorWins(t *testing.T) {
+	item := mediaItem()
 	item["errMsg"] = "video is private"
-	result, err := GetTranscript(context.Background(), "https://www.facebook.com/watch/?v=1234567890", defaultOptions(happyTransport([]any{item})))
+	result, err := ResolveMedia(context.Background(), "https://www.facebook.com/watch/?v=1234567890", defaultOptions(happyTransport([]any{item})))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -181,26 +169,27 @@ func TestGetTranscriptActorErrorWins(t *testing.T) {
 	}
 }
 
-func TestGetTranscriptNoTranscript(t *testing.T) {
-	item := transcriptItem()
-	item["text"] = nil
-	result, err := GetTranscript(context.Background(), "https://www.facebook.com/watch/?v=1234567890", defaultOptions(happyTransport([]any{item})))
+func TestResolveMediaMissingMediaURLIsUnknown(t *testing.T) {
+	item := mediaItem()
+	item["videoUrl"] = ""
+	item["audioUrl"] = ""
+	result, err := ResolveMedia(context.Background(), "https://www.facebook.com/watch/?v=1234567890", defaultOptions(happyTransport([]any{item})))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if result.Status != "no_transcript" {
-		t.Fatalf("status = %q, want no_transcript", result.Status)
+	if result.Status != "unknown" {
+		t.Fatalf("status = %q, want unknown", result.Status)
 	}
-	if result.ExitCode() != 6 {
-		t.Fatalf("exit code = %d, want 6", result.ExitCode())
+	if result.ExitCode() != 7 {
+		t.Fatalf("exit code = %d, want 7", result.ExitCode())
 	}
 }
 
-func TestGetTranscriptCreationUnknownOnServerError(t *testing.T) {
+func TestResolveMediaCreationUnknownOnServerError(t *testing.T) {
 	transport := &fakeTransport{handler: func(method, path string, _ int) (any, error) {
 		return nil, &ApiError{Message: "Apify HTTP 500", Status: 500, Ambiguous: true}
 	}}
-	_, err := GetTranscript(context.Background(), "https://www.facebook.com/watch/?v=1234567890", defaultOptions(transport))
+	_, err := ResolveMedia(context.Background(), "https://www.facebook.com/watch/?v=1234567890", defaultOptions(transport))
 	if _, ok := err.(*CreationUnknownError); !ok {
 		t.Fatalf("error = %T, want CreationUnknownError", err)
 	}
@@ -209,11 +198,11 @@ func TestGetTranscriptCreationUnknownOnServerError(t *testing.T) {
 	}
 }
 
-func TestGetTranscriptCreationRejectedIsTransportError(t *testing.T) {
+func TestResolveMediaCreationRejectedIsTransportError(t *testing.T) {
 	transport := &fakeTransport{handler: func(method, path string, _ int) (any, error) {
 		return nil, &ApiError{Message: "Apify HTTP 400", Status: 400}
 	}}
-	_, err := GetTranscript(context.Background(), "https://www.facebook.com/watch/?v=1234567890", defaultOptions(transport))
+	_, err := ResolveMedia(context.Background(), "https://www.facebook.com/watch/?v=1234567890", defaultOptions(transport))
 	if _, ok := err.(*TransportError); !ok {
 		t.Fatalf("error = %T, want TransportError", err)
 	}
@@ -222,11 +211,11 @@ func TestGetTranscriptCreationRejectedIsTransportError(t *testing.T) {
 	}
 }
 
-func TestGetTranscriptRateLimitedCreationIsNotRetried(t *testing.T) {
+func TestResolveMediaRateLimitedCreationIsNotRetried(t *testing.T) {
 	transport := &fakeTransport{handler: func(method, path string, _ int) (any, error) {
 		return nil, &ApiError{Message: "Apify HTTP 429", Status: 429}
 	}}
-	_, err := GetTranscript(context.Background(), "https://www.facebook.com/watch/?v=1234567890", defaultOptions(transport))
+	_, err := ResolveMedia(context.Background(), "https://www.facebook.com/watch/?v=1234567890", defaultOptions(transport))
 	if _, ok := err.(*CreationUnknownError); !ok {
 		t.Fatalf("error = %T, want CreationUnknownError", err)
 	}
@@ -235,7 +224,7 @@ func TestGetTranscriptRateLimitedCreationIsNotRetried(t *testing.T) {
 	}
 }
 
-func TestGetTranscriptRunFailed(t *testing.T) {
+func TestResolveMediaRunFailed(t *testing.T) {
 	transport := &fakeTransport{handler: func(method, path string, call int) (any, error) {
 		switch {
 		case method == "POST":
@@ -249,7 +238,7 @@ func TestGetTranscriptRunFailed(t *testing.T) {
 			return nil, &ApiError{Message: "unexpected path", Status: 404}
 		}
 	}}
-	result, err := GetTranscript(context.Background(), "https://www.facebook.com/watch/?v=1234567890", defaultOptions(transport))
+	result, err := ResolveMedia(context.Background(), "https://www.facebook.com/watch/?v=1234567890", defaultOptions(transport))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -261,7 +250,7 @@ func TestGetTranscriptRunFailed(t *testing.T) {
 	}
 }
 
-func TestGetTranscriptBuildMismatch(t *testing.T) {
+func TestResolveMediaBuildMismatch(t *testing.T) {
 	transport := &fakeTransport{handler: func(method, path string, _ int) (any, error) {
 		if method == "POST" {
 			return map[string]any{"data": map[string]any{
@@ -271,7 +260,7 @@ func TestGetTranscriptBuildMismatch(t *testing.T) {
 		}
 		return nil, &ApiError{Message: "unexpected path", Status: 404}
 	}}
-	_, err := GetTranscript(context.Background(), "https://www.facebook.com/watch/?v=1234567890", defaultOptions(transport))
+	_, err := ResolveMedia(context.Background(), "https://www.facebook.com/watch/?v=1234567890", defaultOptions(transport))
 	if _, ok := err.(*ProtocolError); !ok {
 		t.Fatalf("error = %T, want ProtocolError", err)
 	}
@@ -280,7 +269,7 @@ func TestGetTranscriptBuildMismatch(t *testing.T) {
 	}
 }
 
-func TestGetTranscriptRetriesPolling(t *testing.T) {
+func TestResolveMediaRetriesPolling(t *testing.T) {
 	transport := &fakeTransport{handler: func(method, path string, _ int) (any, error) {
 		switch {
 		case method == "POST":
@@ -288,7 +277,7 @@ func TestGetTranscriptRetriesPolling(t *testing.T) {
 		case strings.HasPrefix(path, "/actor-runs/"):
 			return succeededRun(), nil
 		case strings.HasPrefix(path, "/datasets/"):
-			return []any{transcriptItem()}, nil
+			return []any{mediaItem()}, nil
 		default:
 			return nil, &ApiError{Message: "unexpected path", Status: 404}
 		}
@@ -305,7 +294,7 @@ func TestGetTranscriptRetriesPolling(t *testing.T) {
 		return inner(method, path, call)
 	}
 
-	result, err := GetTranscript(context.Background(), "https://www.facebook.com/watch/?v=1234567890", defaultOptions(transport))
+	result, err := ResolveMedia(context.Background(), "https://www.facebook.com/watch/?v=1234567890", defaultOptions(transport))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -317,12 +306,12 @@ func TestGetTranscriptRetriesPolling(t *testing.T) {
 	}
 }
 
-func TestGetTranscriptSendsPinnedBuildAndCap(t *testing.T) {
-	transport := happyTransport([]any{transcriptItem()})
+func TestResolveMediaSendsPinnedBuildAndCap(t *testing.T) {
+	transport := happyTransport([]any{mediaItem()})
 	options := defaultOptions(transport)
 	options.MaxTotalChargeUSD = "0.10"
 
-	if _, err := GetTranscript(context.Background(), "https://www.facebook.com/watch/?v=1234567890", options); err != nil {
+	if _, err := ResolveMedia(context.Background(), "https://www.facebook.com/watch/?v=1234567890", options); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	query := transport.firstQuery("POST")
@@ -337,9 +326,9 @@ func TestGetTranscriptSendsPinnedBuildAndCap(t *testing.T) {
 	}
 }
 
-func TestGetTranscriptRejectsBadInputBeforeAnyRequest(t *testing.T) {
-	transport := happyTransport([]any{transcriptItem()})
-	_, err := GetTranscript(context.Background(), "http://www.facebook.com/watch/?v=1", defaultOptions(transport))
+func TestResolveMediaRejectsBadInputBeforeAnyRequest(t *testing.T) {
+	transport := happyTransport([]any{mediaItem()})
+	_, err := ResolveMedia(context.Background(), "http://www.facebook.com/watch/?v=1", defaultOptions(transport))
 	if _, ok := err.(*ConfigurationError); !ok {
 		t.Fatalf("error = %T, want ConfigurationError", err)
 	}

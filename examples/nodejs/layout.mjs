@@ -90,21 +90,6 @@ export function sanitizeItem(item, { keepMediaUrls = false } = {}) {
   return cleaned;
 }
 
-export function transcriptSegments(segments) {
-  if (!Array.isArray(segments)) return [];
-  const result = [];
-  for (const entry of segments) {
-    if (!entry || typeof entry !== 'object') continue;
-    const { start, end, text } = entry;
-    if (typeof start !== 'number' || typeof end !== 'number') continue;
-    if (!Number.isFinite(start) || !Number.isFinite(end)) continue;
-    if (start < 0 || end < start) continue;
-    if (typeof text !== 'string') continue;
-    result.push({ start, end, text });
-  }
-  return result;
-}
-
 export async function writeText(target, text) {
   await fs.mkdir(path.dirname(target), { recursive: true });
   const temporary = `${target}.tmp`;
@@ -117,7 +102,7 @@ export async function writeJson(target, payload) {
   return writeText(target, `${JSON.stringify(payload, null, 2)}\n`);
 }
 
-export function buildManifest({ sourceUrl, canonicalUrl, urlForm, result, assets, transcriptBytes, segmentCount }) {
+export function buildManifest({ sourceUrl, canonicalUrl, urlForm, result, assets }) {
   return {
     schemaVersion: MANIFEST_SCHEMA_VERSION,
     sourceUrl,
@@ -131,7 +116,6 @@ export function buildManifest({ sourceUrl, canonicalUrl, urlForm, result, assets
     duration: result.duration ?? null,
     downloadedAt: utcNow(),
     assets,
-    transcript: { bytes: transcriptBytes, segments: segmentCount },
     notes: [
       'Media links returned by the Actor are signed and short-lived; they are not stored here.',
       'Re-running the same URL reuses this folder and skips files whose size still matches.',

@@ -301,7 +301,7 @@ func LoadResumeRecord(journal *FileJournal, runID string, actorID string) (map[s
 }
 
 // ClassifyItems applies the documented precedence:
-// empty Dataset, item error, usable text, missing text, unsupported type.
+// empty Dataset, item error, usable media URL, unsupported type.
 func ClassifyItems(items []any) (string, string) {
 	if items == nil {
 		return "unknown", "Dataset response is not an item list"
@@ -336,56 +336,21 @@ func ClassifyItems(items []any) (string, string) {
 	}
 
 	for _, item := range objects {
-		if text, ok := item["text"].(string); ok && strings.TrimSpace(text) != "" {
-			return "success", ""
+		for _, field := range []string{"videoUrl", "audioUrl"} {
+			raw, present := item[field]
+			if !present || raw == nil {
+				continue
+			}
+			if text, ok := raw.(string); ok {
+				if strings.TrimSpace(text) != "" {
+					return "success", ""
+				}
+				continue
+			}
+			return "unknown", field + " has an unsupported type"
 		}
 	}
-	for _, item := range objects {
-		if raw, present := item["text"]; present && raw == nil {
-			return "no_transcript", "Transcript text is null"
-		}
-	}
-	for _, item := range objects {
-		if _, present := item["text"]; !present {
-			return "no_transcript", "Transcript text is absent"
-		}
-	}
-	for _, item := range objects {
-		if text, ok := item["text"].(string); ok && strings.TrimSpace(text) == "" {
-			return "no_transcript", "Transcript text is empty"
-		}
-	}
-	return "unknown", "Transcript text has an unsupported type"
-}
-
-// NormalizeSegments keeps only well-formed entries: finite numeric bounds with
-// start >= 0 and end >= start, plus a string text. Raw items stay untouched.
-func NormalizeSegments(value any) []map[string]any {
-	list, ok := value.([]any)
-	if !ok {
-		return []map[string]any{}
-	}
-	result := make([]map[string]any, 0, len(list))
-	for _, entry := range list {
-		object, ok := entry.(map[string]any)
-		if !ok {
-			continue
-		}
-		start, startOK := number(object["start"])
-		end, endOK := number(object["end"])
-		text, textOK := object["text"].(string)
-		if !startOK || !endOK || !textOK {
-			continue
-		}
-		if math.IsInf(start, 0) || math.IsNaN(start) || math.IsInf(end, 0) || math.IsNaN(end) {
-			continue
-		}
-		if start < 0 || end < start {
-			continue
-		}
-		result = append(result, map[string]any{"start": start, "end": end, "text": text})
-	}
-	return result
+	return "unknown", "Dataset item carries no videoUrl or audioUrl"
 }
 
 func number(value any) (float64, bool) {

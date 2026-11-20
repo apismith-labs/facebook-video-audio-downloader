@@ -1,0 +1,123 @@
+{
+  "actorId": "IzxtysN3hVHLfXGT9",
+  "actorName": "facebook-video-audio-downloader",
+  "username": "apple_yang",
+  "title": "Facebook Video Downloader API – Download Videos & Extract Audio",
+  "capturedAt": "2026-11-20",
+  "source": "https://api.apify.com/v2/actors/IzxtysN3hVHLfXGT9 and /builds/WGTQiWxajo00DTQ5X",
+  "evidenceStatus": "verified_from_build_api_no_live_run",
+  "build": {
+    "number": "0.0.17",
+    "id": "WGTQiWxajo00DTQ5X"
+  },
+  "input": {
+    "schemaVersion": 1,
+    "type": "object",
+    "properties": {
+      "videoUrls": {
+        "type": "array",
+        "items": { "type": "string" },
+        "editor": "stringList",
+        "description": "Public Facebook video URLs."
+      }
+    },
+    "required": ["videoUrls"]
+  },
+  "dataset": {
+    "actorSpecification": 1,
+    "fields": {
+      "url": "string",
+      "title": "string",
+      "videoUrl": "string",
+      "audioUrl": "string",
+      "createTime": "integer",
+      "playCount": "integer",
+      "commentCount": "integer",
+      "reactionCount": "integer",
+      "likesCount": "integer",
+      "shareCount": "integer",
+      "duration": "number",
+      "nickname": "string",
+      "avatarUri": "string",
+      "errMsg": "string",
+      "timestamp": "string"
+    },
+    "required": [
+      "url",
+      "title",
+      "videoUrl",
+      "audioUrl",
+      "createTime",
+      "playCount",
+      "commentCount",
+      "reactionCount",
+      "likesCount",
+      "shareCount",
+      "duration",
+      "nickname",
+      "avatarUri",
+      "errMsg",
+      "timestamp"
+    ]
+  },
+  "pricing": {
+    "model": "PAY_PER_EVENT",
+    "events": {
+      "apify-default-dataset-item": {
+        "eventTitle": "result",
+        "eventPriceUsd": 0.005,
+        "isPrimaryEvent": true
+      }
+    },
+    "startedAt": "2026-03-06T09:15:13.568Z",
+    "storeHeadline": "$5.00 / 1,000 results",
+    "notes": [
+      "Flat per dataset item; no speech2text event and no per-minute tier.",
+      "A Run that writes an item with errMsg is still billed."
+    ]
+  },
+  "clientContract": {
+    "statuses": [
+      "success",
+      "actor_error",
+      "empty",
+      "unknown",
+      "transport_error",
+      "run_failed",
+      "creation_unknown",
+      "config_error",
+      "download_failed"
+    ],
+    "exitCodes": {
+      "success": 0,
+      "config_error": 2,
+      "actor_error": 4,
+      "empty": 5,
+      "unknown": 7,
+      "transport_error": 8,
+      "run_failed": 9,
+      "creation_unknown": 10,
+      "download_failed": 11
+    },
+    "inputSent": {
+      "videoUrls": ["<one canonical URL per Run>"]
+    },
+    "files": [
+      "video.mp4",
+      "audio.mp4|m4a|mp3",
+      "metadata.json",
+      "manifest.json"
+    ],
+    "manifestSchemaVersion": 1
+  },
+  "unverified": [
+    "No live Run has been executed against Build 0.0.17.",
+    "Exact signed-URL TTL.",
+    "Whether videoUrl and audioUrl answer 200 without a browser User-Agent or Referer.",
+    "Behaviour for private, deleted, region-locked, or age-restricted videos.",
+    "Whether a video without an audio track returns a usable audioUrl.",
+    "Whether fb.watch short codes resolve inside the Actor.",
+    "Whether more than one item is returned when videoUrls has one element.",
+    "Whether likesCount and shareCount are populated for every item type."
+  ]
+}

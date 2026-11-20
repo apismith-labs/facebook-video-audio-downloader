@@ -19,7 +19,6 @@ public final class OfflineTests {
         urlRejection();
         buildAndCapValidation();
         classification();
-        segments();
         costModel();
         journalRoundTrip();
         journalRejectsCorruption();
@@ -65,7 +64,7 @@ public final class OfflineTests {
         cases.put("https://fb.watch/AbCdEf123/", new String[] {"https://fb.watch/AbCdEf123/", "short_link"});
 
         for (Map.Entry<String, String[]> entry : cases.entrySet()) {
-            String[] result = TranscriptClient.validateVideoUrl(entry.getKey());
+            String[] result = VideoClient.validateVideoUrl(entry.getKey());
             check(result[0].equals(entry.getValue()[0]), "canonical for " + entry.getKey() + " = " + result[0]);
             check(result[1].equals(entry.getValue()[1]), "form for " + entry.getKey() + " = " + result[1]);
         }
@@ -89,8 +88,8 @@ public final class OfflineTests {
         for (String url : rejected) {
             boolean threw = false;
             try {
-                TranscriptClient.validateVideoUrl(url);
-            } catch (TranscriptClient.ConfigurationException expected) {
+                VideoClient.validateVideoUrl(url);
+            } catch (VideoClient.ConfigurationException expected) {
                 threw = true;
             }
             check(threw, "expected rejection: " + url);
@@ -98,13 +97,13 @@ public final class OfflineTests {
     }
 
     private static void buildAndCapValidation() throws Exception {
-        check(TranscriptClient.validateBuild("0.0.18", true).equals("0.0.18"), "pinned build accepted");
-        check(throwsConfiguration(() -> TranscriptClient.validateBuild("latest", false)), "latest rejected");
-        check(throwsConfiguration(() -> TranscriptClient.validateBuild("0.0.19", true)), "other build rejected");
-        check(throwsConfiguration(() -> TranscriptClient.validateChargeCap("0", false)), "zero cap rejected");
-        check(throwsConfiguration(() -> TranscriptClient.validateChargeCap("-1", false)), "negative cap rejected");
-        check(throwsConfiguration(() -> TranscriptClient.validateChargeCap("", true)), "missing required cap rejected");
-        check(TranscriptClient.validateChargeCap("0.10", false) == 0.10, "0.10 accepted");
+        check(VideoClient.validateBuild("0.0.17", true).equals("0.0.17"), "pinned build accepted");
+        check(throwsConfiguration(() -> VideoClient.validateBuild("latest", false)), "latest rejected");
+        check(throwsConfiguration(() -> VideoClient.validateBuild("9.9.9", true)), "other build rejected");
+        check(throwsConfiguration(() -> VideoClient.validateChargeCap("0", false)), "zero cap rejected");
+        check(throwsConfiguration(() -> VideoClient.validateChargeCap("-1", false)), "negative cap rejected");
+        check(throwsConfiguration(() -> VideoClient.validateChargeCap("", true)), "missing required cap rejected");
+        check(VideoClient.validateChargeCap("0.10", false) == 0.10, "0.10 accepted");
     }
 
     private static boolean throwsConfiguration(ThrowingCall call) {
@@ -124,48 +123,27 @@ public final class OfflineTests {
         check(ReliableActor.classifyItems(List.of()).status().equals("empty"), "empty dataset");
         check(ReliableActor.classifyItems(null).status().equals("unknown"), "non-list dataset");
         check(ReliableActor.classifyItems(List.of("nope")).status().equals("unknown"), "non-object item");
-        check(ReliableActor.classifyItems(List.of(Map.of("errMsg", "private", "text", "hello")))
-                .status().equals("actor_error"), "errMsg wins over text");
-        check(ReliableActor.classifyItems(List.of(Map.of("errMsg", "  ", "text", "hello")))
+        check(ReliableActor.classifyItems(List.of(Map.of("errMsg", "private", "videoUrl", "https://x/a.mp4")))
+                .status().equals("actor_error"), "errMsg wins over media");
+        check(ReliableActor.classifyItems(List.of(Map.of("errMsg", "  ", "videoUrl", "https://x/a.mp4")))
                 .status().equals("success"), "blank errMsg ignored");
 
-        Map<String, Object> nullText = new LinkedHashMap<>();
-        nullText.put("text", null);
-        check(ReliableActor.classifyItems(List.of(nullText)).status().equals("no_transcript"), "null text");
-        check(ReliableActor.classifyItems(List.of(Map.of("title", "x"))).status().equals("no_transcript"),
-                "absent text");
-        check(ReliableActor.classifyItems(List.of(Map.of("text", "   "))).status().equals("no_transcript"),
-                "blank text");
-        check(ReliableActor.classifyItems(List.of(Map.of("text", 42))).status().equals("unknown"),
-                "numeric text");
-    }
-
-    private static void segments() {
-        List<Object> input = new ArrayList<>();
-        input.add(Map.of("start", 0.0, "end", 1.5, "text", "ok"));
-        input.add(Map.of("start", 1.0, "end", 2.0, "text", "ok2", "extra", true));
-        input.add(Map.of("start", 3.0, "end", 2.0, "text", "reversed"));
-        input.add(Map.of("start", -1.0, "end", 2.0, "text", "negative"));
-        input.add(Map.of("start", "0", "end", 2.0, "text", "string bound"));
-        input.add(Map.of("start", 0.0, "end", 2.0));
-        input.add("not an object");
-
-        List<Map<String, Object>> result = ReliableActor.normalizeSegments(input);
-        check(result.size() == 2, "segments kept = " + result.size());
-        check(result.get(0).get("text").equals("ok"), "first segment text");
-        check(result.get(1).get("text").equals("ok2"), "second segment text");
-        check(ReliableActor.normalizeSegments(null).isEmpty(), "non-list segments");
+        Map<String, Object> nullUrl = new LinkedHashMap<>();
+        nullUrl.put("videoUrl", null);
+        check(ReliableActor.classifyItems(List.of(nullUrl)).status().equals("unknown"), "null url");
+        check(ReliableActor.classifyItems(List.of(Map.of("title", "x"))).status().equals("unknown"),
+                "absent url");
+        check(ReliableActor.classifyItems(List.of(Map.of("videoUrl", "   "))).status().equals("unknown"),
+                "blank url");
+        check(ReliableActor.classifyItems(List.of(Map.of("videoUrl", 42))).status().equals("unknown"),
+                "numeric url");
     }
 
     private static void costModel() {
-        check(Math.abs(Cost.estimate(1, 30, "FREE") - 0.0055) < 1e-9, "30s FREE");
-        check(Math.abs(Cost.estimate(1, 60, "FREE") - 0.0055) < 1e-9, "60s FREE");
-        check(Math.abs(Cost.estimate(1, 600, "FREE") - 0.046) < 1e-9, "10min FREE");
-        check(Math.abs(Cost.estimate(1, 600, "GOLD") - 0.021) < 1e-9, "10min GOLD");
-        check(Math.abs(Cost.estimate(1000, 60, "FREE") - 5.50) < 1e-9, "1000 x 1min FREE");
-        check(Cost.billedMinutes(0) == 1, "zero duration floors at one minute");
-        check(Cost.billedMinutes(60.1) == 2, "60.1s bills two minutes");
-        check(throwsConfiguration(() -> Cost.estimate(1, 60, "NOPE")), "unknown tier rejected");
+        check(Math.abs(Cost.estimate(1) - 0.005) < 1e-9, "one video");
+        check(Math.abs(Cost.estimate(1000) - 5.00) < 1e-9, "1000 videos");
+        check(Math.abs(Cost.estimate(0)) < 1e-9, "zero videos");
+        check(throwsConfiguration(() -> Cost.estimate(-1)), "negative videos rejected");
     }
 
     private static void journalRoundTrip() throws Exception {
@@ -237,17 +215,17 @@ public final class OfflineTests {
         return Map.of("data", data);
     }
 
-    private static Map<String, Object> transcriptItem() {
+    private static Map<String, Object> mediaItem() {
         Map<String, Object> item = new LinkedHashMap<>();
         item.put("url", "https://www.facebook.com/watch/?v=1115932820735409");
         item.put("title", "Q & A about sleeping");
         item.put("duration", 43.5);
         item.put("nickname", "Dr. Shu");
-        item.put("text", " Hello, Dr.");
+        item.put("videoUrl", "https://scontent.xx.fbcdn.net/v/a.mp4?oh=1");
+        item.put("audioUrl", "https://scontent.xx.fbcdn.net/v/b.mp4?oh=1");
         item.put("errMsg", "");
         item.put("likesCount", 75000);
         item.put("shareCount", 1200);
-        item.put("segments", List.of(Map.of("start", 0.0, "end", 0.68, "text", " Hello, Dr.")));
         return item;
     }
 
@@ -266,8 +244,8 @@ public final class OfflineTests {
         });
     }
 
-    private static TranscriptClient.Options options(ReliableActor.Transport transport) {
-        TranscriptClient.Options options = new TranscriptClient.Options();
+    private static VideoClient.Options options(ReliableActor.Transport transport) {
+        VideoClient.Options options = new VideoClient.Options();
         options.token = "test-token";
         options.transport = transport;
         options.timeoutSeconds = 5;
@@ -275,13 +253,11 @@ public final class OfflineTests {
     }
 
     private static void successRun() throws Exception {
-        FakeTransport transport = happyTransport(List.of(transcriptItem()));
-        TranscriptClient.Result result = TranscriptClient.getTranscript(
+        FakeTransport transport = happyTransport(List.of(mediaItem()));
+        VideoClient.Result result = VideoClient.resolveMedia(
                 "https://www.facebook.com/watch/?v=1234567890", options(transport));
 
         check(result.status().equals("success"), "status = " + result.status());
-        check(" Hello, Dr.".equals(result.text()), "text");
-        check(result.segments().size() == 1, "segments");
         check("run-1".equals(result.runId()), "run id");
         check("ds-1".equals(result.datasetId()), "dataset id");
         check(result.datasetComplete(), "dataset complete");
@@ -291,16 +267,16 @@ public final class OfflineTests {
     }
 
     private static void emptyDataset() throws Exception {
-        TranscriptClient.Result result = TranscriptClient.getTranscript(
+        VideoClient.Result result = VideoClient.resolveMedia(
                 "https://www.facebook.com/reel/1234567890/", options(happyTransport(List.of())));
         check(result.status().equals("empty"), "empty status");
         check(result.exitCode() == 5, "empty exit code");
     }
 
     private static void actorErrorWins() throws Exception {
-        Map<String, Object> item = new LinkedHashMap<>(transcriptItem());
+        Map<String, Object> item = new LinkedHashMap<>(mediaItem());
         item.put("errMsg", "video is private");
-        TranscriptClient.Result result = TranscriptClient.getTranscript(
+        VideoClient.Result result = VideoClient.resolveMedia(
                 "https://www.facebook.com/watch/?v=1234567890", options(happyTransport(List.of(item))));
         check(result.status().equals("actor_error"), "actor_error status");
         check(result.exitCode() == 4, "actor_error exit code");
@@ -312,8 +288,8 @@ public final class OfflineTests {
         });
         boolean threw = false;
         try {
-            TranscriptClient.getTranscript("https://www.facebook.com/watch/?v=1", options(transport));
-        } catch (TranscriptClient.CreationUnknownException expected) {
+            VideoClient.resolveMedia("https://www.facebook.com/watch/?v=1", options(transport));
+        } catch (VideoClient.CreationUnknownException expected) {
             threw = true;
         } catch (Exception other) {
             throw new AssertionError("unexpected exception " + other);
@@ -328,8 +304,8 @@ public final class OfflineTests {
         });
         boolean threw = false;
         try {
-            TranscriptClient.getTranscript("https://www.facebook.com/watch/?v=1", options(transport));
-        } catch (TranscriptClient.TransportException expected) {
+            VideoClient.resolveMedia("https://www.facebook.com/watch/?v=1", options(transport));
+        } catch (VideoClient.TransportException expected) {
             threw = true;
         } catch (Exception other) {
             throw new AssertionError("unexpected exception " + other);
@@ -344,8 +320,8 @@ public final class OfflineTests {
         });
         boolean threw = false;
         try {
-            TranscriptClient.getTranscript("https://www.facebook.com/watch/?v=1", options(transport));
-        } catch (TranscriptClient.CreationUnknownException expected) {
+            VideoClient.resolveMedia("https://www.facebook.com/watch/?v=1", options(transport));
+        } catch (VideoClient.CreationUnknownException expected) {
             threw = true;
         } catch (Exception other) {
             throw new AssertionError("unexpected exception " + other);
@@ -361,7 +337,7 @@ public final class OfflineTests {
             }
             return succeededRun("FAILED");
         });
-        TranscriptClient.Result result = TranscriptClient.getTranscript(
+        VideoClient.Result result = VideoClient.resolveMedia(
                 "https://www.facebook.com/watch/?v=1", options(transport));
         check(result.status().equals("run_failed"), "run_failed status");
         check(result.exitCode() == 9, "run_failed exit code");
@@ -376,8 +352,8 @@ public final class OfflineTests {
         });
         boolean threw = false;
         try {
-            TranscriptClient.getTranscript("https://www.facebook.com/watch/?v=1", options(transport));
-        } catch (TranscriptClient.ProtocolException expected) {
+            VideoClient.resolveMedia("https://www.facebook.com/watch/?v=1", options(transport));
+        } catch (VideoClient.ProtocolException expected) {
             threw = true;
         } catch (Exception other) {
             throw new AssertionError("unexpected exception " + other);
@@ -392,13 +368,13 @@ public final class OfflineTests {
                 return succeededRun("SUCCEEDED");
             }
             if (path.startsWith("/datasets/")) {
-                return List.of(transcriptItem());
+                return List.of(mediaItem());
             }
             throw new ReliableActor.ApiException("unexpected path " + path, 404, 0, false);
         });
-        TranscriptClient.Options options = options(transport);
+        VideoClient.Options options = options(transport);
         options.runId = "run-1";
-        TranscriptClient.Result result = TranscriptClient.getTranscript(
+        VideoClient.Result result = VideoClient.resolveMedia(
                 "https://www.facebook.com/watch/?v=1", options);
         check(result.status().equals("success"), "resume status");
         check(transport.count("POST") == 0, "resume must not POST");
@@ -418,7 +394,7 @@ public final class OfflineTests {
 
     private static void dotEnvQuoteStyles() {
         // `.env` files in the wild quote values with either style; both must reach the validator bare.
-        Map<String, String> values = TranscriptClient.parseDotEnvLines(List.of(
+        Map<String, String> values = VideoClient.parseDotEnvLines(List.of(
                 "# comment",
                 "APIFY_TOKEN='single-quoted'",
                 "APIFY_MAX_TOTAL_CHARGE_USD=\"0.10\"",

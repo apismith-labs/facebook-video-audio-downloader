@@ -1,4 +1,4 @@
-"""Small staged Apify REST runner for the Facebook Transcript Actor.
+"""Small staged Apify REST runner for the Facebook Video & Audio Downloader Actor.
 
 Safe to import: no environment loading, file creation, or network access happens at import time.
 The runner deliberately separates three stages — create, poll, read Dataset — because each has a
@@ -26,7 +26,6 @@ STATUSES = (
     "success",
     "actor_error",
     "empty",
-    "no_transcript",
     "unknown",
     "transport_error",
     "run_failed",
@@ -36,23 +35,22 @@ EXIT_CODES = {
     "success": 0,
     "actor_error": 4,
     "empty": 5,
-    "no_transcript": 6,
     "unknown": 7,
     "transport_error": 8,
     "run_failed": 9,
     "creation_unknown": 10,
 }
 
-# Pinned build: see docs/audit/actor_audit_20261028.md.
-APPROVED_BUILD_NUMBER = "0.0.18"
-APPROVED_BUILD_ID = "fZIlpYENof2jYqIJc"
+# Pinned build: see docs/audit/actor_audit_20261120.md.
+APPROVED_BUILD_NUMBER = "0.0.17"
+APPROVED_BUILD_ID = "WGTQiWxajo00DTQ5X"
 
-DEFAULT_ACTOR_ID = "apple_yang/facebook-transcript-scraper-api"
+DEFAULT_ACTOR_ID = "apple_yang/facebook-video-audio-downloader"
 
 
-def build_run_input(video_url: str) -> dict[str, str]:
-    """Build the Actor input. ``videoUrl`` is the only accepted field."""
-    return {"videoUrl": video_url}
+def build_run_input(video_url: str) -> dict[str, list[str]]:
+    """Build the Actor input. ``videoUrls`` is an array; the kit submits one URL per Run."""
+    return {"videoUrls": [video_url]}
 
 
 def validate_run_charge_cap(value, *, required: bool = False) -> float | None:
@@ -270,7 +268,7 @@ def load_resume_record(journal: RunJournal, run_id: str, actor_id: str):
 def classify_items(items: Any) -> tuple[str, str]:
     """Classify Dataset items using the documented precedence.
 
-    Order: empty Dataset, item error, usable text, missing text, unsupported type.
+    Order: empty Dataset, item error, usable media URL, unsupported type.
     """
     if not isinstance(items, list):
         return "unknown", "Dataset response is not an item list"
@@ -283,41 +281,16 @@ def classify_items(items: Any) -> tuple[str, str]:
         for item in items
         if item.get("errMsg") is not None and str(item.get("errMsg")).strip()
     ]
-    texts = [item.get("text") for item in items]
     if errors:
         return "actor_error", _redact_text("; ".join(errors))[:500]
-    if any(isinstance(text, str) and text.strip() for text in texts):
-        return "success", ""
-    if any("text" in item and item.get("text") is None for item in items):
-        return "no_transcript", "Transcript text is null"
-    if any("text" not in item for item in items):
-        return "no_transcript", "Transcript text is absent"
-    if any(isinstance(text, str) and not text.strip() for text in texts):
-        return "no_transcript", "Transcript text is empty"
-    return "unknown", "Transcript text has an unsupported type"
-
-
-def normalize_segments(value: Any) -> list[dict[str, Any]]:
-    """Return only well-formed segments: finite numeric bounds, start <= end, string text."""
-    if not isinstance(value, list):
-        return []
-    result: list[dict[str, Any]] = []
-    for entry in value:
-        if not isinstance(entry, dict):
-            continue
-        start, end, text = entry.get("start"), entry.get("end"), entry.get("text")
-        if isinstance(start, bool) or isinstance(end, bool):
-            continue
-        if not isinstance(start, (int, float)) or not isinstance(end, (int, float)):
-            continue
-        if not math.isfinite(float(start)) or not math.isfinite(float(end)):
-            continue
-        if start < 0 or end < start:
-            continue
-        if not isinstance(text, str):
-            continue
-        result.append({"start": start, "end": end, "text": text})
-    return result
+    for item in items:
+        for field in ("videoUrl", "audioUrl"):
+            value = item.get(field)
+            if isinstance(value, str) and value.strip():
+                return "success", ""
+            if value is not None and not isinstance(value, str):
+                return "unknown", f"{field} has an unsupported type"
+    return "unknown", "Dataset item carries no videoUrl or audioUrl"
 
 
 def _deadline(deadline: float):

@@ -3,36 +3,24 @@
 Only the **Actor Run** costs money. Downloading the media is a CDN transfer that Apify does not
 bill through this Actor.
 
-## The two billed events
+## The billed event
 
 | Event | Price | Fires when |
 | --- | --- | --- |
-| `apify-default-dataset-item` | $0.001 per item | A Run writes its dataset item — **including failed Runs** |
-| `speech2text` | $0.0045 per started minute (FREE tier) | A transcription is attempted |
+| `apify-default-dataset-item` | $0.005 per item | A Run writes its dataset item — **including an item that carries `errMsg`** |
 
-Per-minute price by plan tier:
-
-| Tier | USD / minute |
-| --- | --- |
-| FREE | 0.0045 |
-| BRONZE | 0.0035 |
-| SILVER | 0.003 |
-| GOLD and above | 0.002 |
-
-Any duration under one minute is billed as one minute.
+There is no `speech2text` event and no per-minute tier: the price is flat per dataset item. The
+Store headline, `$5.00 / 1,000 results`, matches this rate.
 
 ## Worked examples
 
 | Case | Calculation | Cost |
 | --- | --- | --- |
-| 42.261 s video, FREE | $0.001 + $0.0045 × 1 | **$0.0055** |
-| 3-minute video, FREE | $0.001 + $0.0045 × 3 | **$0.0145** |
-| Failed Run (`no audio url found`) | $0.001 + no speech event | **$0.001** |
-| Re-run of a downloaded URL | one new Run + no transfer | **$0.0055** |
-| 100-video batch, ~1 min each, FREE | 100 × $0.0055 | **$0.55** |
-
-Recorded live on 2026-10-28: a 42.261 s video was charged exactly $0.0055, itemised as
-$0.001 + $0.0045.
+| One resolved video | 1 × $0.005 | **$0.005** |
+| Failed Run that wrote an item (`no audio url found`) | 1 × $0.005 | **$0.005** |
+| Run that wrote no item (empty Dataset) | 0 × $0.005 | **$0.000** |
+| Re-run of a downloaded URL | one new Run | **$0.005** |
+| 100-video batch | 100 × $0.005 | **$0.50** |
 
 ## Estimating before you spend
 
@@ -41,10 +29,11 @@ python3 examples/python/batch_download.py sample-data/videos.csv
 ```
 
 ```text
-Estimate: 3 video(s), 3 billed minute(s), FREE tier -> $0.0165 estimated
+Estimate: 3 video(s) -> $0.0150 estimated ($0.0050 per result)
 ```
 
-A row without `durationSeconds` assumes the one-minute floor, so the estimate is a **lower bound**.
+The estimate is exact for the Run charge if every row writes one item. It does not include Apify
+platform usage outside this Actor's pay-per-event price.
 
 ## Caps
 
@@ -60,8 +49,7 @@ $0.10 per Run, a runaway batch cannot cost more than $0.10 × rows.
 
 | Limit | Value |
 | --- | --- |
-| Videos per Run | 1 |
-| Maximum video length | 5 minutes on the FREE plan |
+| Videos per Run | 1 in this kit; the Actor's `videoUrls` array accepts more |
 | Login / private content | not supported |
 | Dataset items per Run | expected 1; the client reads up to 100 and flags incompleteness |
 | Run timeout | 900 s default, configurable |
@@ -79,4 +67,4 @@ $0.10 per Run, a runaway batch cannot cost more than $0.10 × rows.
 1. Run plan-only mode on a new CSV before adding `--execute`.
 2. Keep `APIFY_REQUIRE_MAX_TOTAL_CHARGE_USD=1` in CI and in any shared environment.
 3. Treat `creation_unknown` (exit 10) as "check before retry", never as "retry".
-4. Remember that an `actor_error` still costs $0.001; a batch of dead URLs is not free.
+4. Remember that an `actor_error` still costs $0.005 if the Run wrote an item.

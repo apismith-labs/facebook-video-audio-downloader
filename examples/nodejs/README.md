@@ -6,7 +6,7 @@ Node 18+ (uses the built-in `fetch` and `node:test`). No dependencies.
 
 | File | Role |
 | --- | --- |
-| `client.mjs` | Actor API: URL validation, `getTranscript()`, pinned Build verification |
+| `client.mjs` | Actor API: URL validation, `resolveMedia()`, pinned Build verification |
 | `reliable-actor.mjs` | Three-stage runner: create once, poll, read the Dataset |
 | `media.mjs` | Resumable download, SHA-256, redaction, ffmpeg remux |
 | `layout.mjs` | Folder naming, sidecar files, manifest |
@@ -54,6 +54,6 @@ cd ../..
 APIFY_SKIP_DOTENV=1 node --test tests/node/*.test.mjs
 ```
 
-34 tests over four files: media resumption against a local HTTP server, layout rules, the full
+32 tests over four files: media resumption against a local HTTP server, layout rules, the full
 pipeline against a fake Actor, and `.env` discovery. `node --test` does not accept a directory in
 Node 22, hence the glob.

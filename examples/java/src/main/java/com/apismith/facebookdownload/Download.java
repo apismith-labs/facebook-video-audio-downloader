@@ -11,9 +11,9 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Command line entry point: download the video, audio, transcript, and metadata for one URL.
+ * Command line entry point: download the video, audio, and metadata for one URL.
  *
- * <p>One invocation may create one billable Actor Run ($0.0055 for a video under one minute). The
+ * <p>One invocation may create one billable Actor Run ($0.005). The
  * Run resolves the page into signed videoUrl/audioUrl links; those are downloaded immediately
  * because the signature expires.
  *
@@ -83,8 +83,8 @@ public final class Download {
             System.exit(2);
         }
 
-        Map<String, String> dotEnv = TranscriptClient.readDotEnv(TranscriptClient.findDotEnv());
-        TranscriptClient.Options run = new TranscriptClient.Options();
+        Map<String, String> dotEnv = VideoClient.readDotEnv(VideoClient.findDotEnv());
+        VideoClient.Options run = new VideoClient.Options();
         run.token = firstNonBlank(flags.get("token"), dotEnv.get("APIFY_TOKEN"),
                 System.getenv().getOrDefault("APIFY_TOKEN", ""));
         run.actorId = flags.getOrDefault("actor-id", dotEnv.getOrDefault("APIFY_ACTOR_ID",
@@ -135,7 +135,6 @@ public final class Download {
                     }
                 }
                 System.out.println(report.get("status") + ": " + report.get("outputDir")
-                        + "  segments=" + report.get("segments")
                         + "  " + (files.length() == 0 ? "no media" : files));
             } else {
                 System.err.println(report.get("status") + ": " + report.get("error"));

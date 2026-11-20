@@ -1,7 +1,7 @@
-// Package transcript is a small, dependency-free client for the Apify Actor
-// apple_yang/facebook-transcript-scraper-api.
+// Package downloader is a small, dependency-free client for the Apify Actor
+// apple_yang/facebook-video-audio-downloader.
 //
-// It mirrors the Python and Node.js clients in this repository: the same eight
+// It mirrors the Python and Node.js clients in this repository: the same seven
 // statuses, the same exit codes, the same URL allow-list, and the same rule that
 // Run creation is attempted exactly once.
 package downloader
@@ -13,11 +13,11 @@ import (
 	"strings"
 )
 
-// Pinned build. See docs/audit/actor_audit_20261028.md before changing these.
+// Pinned build. See docs/audit/actor_audit_20261120.md before changing these.
 const (
-	ApprovedBuildNumber = "0.0.18"
-	ApprovedBuildID     = "fZIlpYENof2jYqIJc"
-	DefaultActorID      = "apple_yang/facebook-transcript-scraper-api"
+	ApprovedBuildNumber = "0.0.17"
+	ApprovedBuildID     = "WGTQiWxajo00DTQ5X"
+	DefaultActorID      = "apple_yang/facebook-video-audio-downloader"
 	DefaultDatasetLimit = 100
 	DefaultTimeout      = 900
 )
@@ -25,14 +25,13 @@ const (
 // Statuses are the business outcomes a caller must handle explicitly.
 var (
 	Statuses = []string{
-		"success", "actor_error", "empty", "no_transcript",
+		"success", "actor_error", "empty",
 		"unknown", "transport_error", "run_failed", "creation_unknown",
 	}
 	ExitCodes = map[string]int{
 		"success":          0,
 		"actor_error":      4,
 		"empty":            5,
-		"no_transcript":    6,
 		"unknown":          7,
 		"transport_error":  8,
 		"run_failed":       9,

@@ -21,21 +21,20 @@ from typing import Any
 
 if __package__:
     from .client import APPROVED_BUILD_NUMBER, ConfigurationError, validate_video_url
-    from .cost import DATASET_ITEM_USD, TIER_PRICES_USD_PER_MINUTE, billed_minutes
+    from .cost import estimate_cost_usd, format_estimate
     from .env import load_env_file
     from .pipeline import download_one
     from .reliable_actor import RunJournal, sanitize, write_private
 else:
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     from client import APPROVED_BUILD_NUMBER, ConfigurationError, validate_video_url
-    from cost import DATASET_ITEM_USD, TIER_PRICES_USD_PER_MINUTE, billed_minutes
+    from cost import estimate_cost_usd, format_estimate
     from env import load_env_file
     from pipeline import download_one
     from reliable_actor import RunJournal, sanitize, write_private
 
 COUNTER_KEYS = (
     "success",
-    "no_transcript",
     "actor_error",
     "empty",
     "unknown",
@@ -53,15 +52,13 @@ class CsvRow:
     url: str
     canonical_url: str
     url_form: str
-    duration_seconds: float | None
 
 
 def parse_rows(path: Path) -> list[CsvRow]:
     """Validate every non-empty data row before any Run is created.
 
-    The header must contain ``videoUrl`` or ``url`` (case-insensitive). ``durationSeconds`` is
-    optional and only used for cost estimates. The CSV line number becomes ``rowId`` so duplicate
-    URLs stay traceable to their input line.
+    The header must contain ``videoUrl`` or ``url`` (case-insensitive). The CSV line number
+    becomes ``rowId`` so duplicate URLs stay traceable to their input line.
     """
     if not path.is_file():
         raise ConfigurationError(f"CSV file not found: {path}")
@@ -71,7 +68,6 @@ def parse_rows(path: Path) -> list[CsvRow]:
         url_key = fields.get("videourl") or fields.get("url")
         if url_key is None:
             raise ConfigurationError("CSV must have a 'videoUrl' or 'url' column")
-        duration_key = fields.get("durationseconds")
         rows: list[CsvRow] = []
         for raw in reader:
             row_id = str(reader.line_num)
@@ -82,43 +78,15 @@ def parse_rows(path: Path) -> list[CsvRow]:
                 canonical, form = validate_video_url(url)
             except ConfigurationError as exc:
                 raise ConfigurationError(f"CSV line {row_id}: {exc}") from None
-            duration: float | None = None
-            if duration_key:
-                value = (raw.get(duration_key) or "").strip()
-                if value:
-                    try:
-                        duration = float(value)
-                    except ValueError:
-                        raise ConfigurationError(
-                            f"CSV line {row_id}: durationSeconds must be a number"
-                        ) from None
-                    if duration < 0:
-                        raise ConfigurationError(
-                            f"CSV line {row_id}: durationSeconds must not be negative"
-                        )
-            rows.append(CsvRow(row_id, url, canonical, form, duration))
+            rows.append(CsvRow(row_id, url, canonical, form))
     if not rows:
         raise ConfigurationError("CSV contains no non-empty URL rows")
     return rows
 
 
-def estimate_rows(rows: list[CsvRow], tier: str) -> dict[str, Any]:
+def estimate_rows(rows: list[CsvRow]) -> dict[str, Any]:
     """Sum per-row Run costs; media transfer is free and is not counted here."""
-    selected = (tier or "FREE").strip().upper()
-    if selected not in TIER_PRICES_USD_PER_MINUTE:
-        raise ConfigurationError("tier must be one of " + ", ".join(TIER_PRICES_USD_PER_MINUTE))
-    minutes = sum(billed_minutes(row.duration_seconds or 0) for row in rows)
-    item_cost = DATASET_ITEM_USD * len(rows)
-    speech_cost = TIER_PRICES_USD_PER_MINUTE[selected] * minutes
-    return {
-        "tier": selected,
-        "videos": len(rows),
-        "billedMinutes": minutes,
-        "datasetItemUsd": float(item_cost),
-        "speechToTextUsd": float(speech_cost),
-        "totalUsd": float(item_cost + speech_cost),
-        "lowerBound": any(row.duration_seconds is None for row in rows),
-    }
+    return estimate_cost_usd(videos=len(rows))
 
 
 def run_batch(
@@ -175,7 +143,7 @@ def count_results(results: list[dict]) -> dict[str, int]:
         status = row.get("status", "unknown")
         counts[status if status in counts else "unknown"] += 1
     counts["processed"] = sum(counts.values())
-    counts["failed"] = counts["processed"] - counts["success"] - counts["no_transcript"]
+    counts["failed"] = counts["processed"] - counts["success"]
     return counts
 
 
@@ -203,8 +171,6 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-concurrency", type=int, default=3,
                         help="Concurrent rows (default 3)")
     parser.add_argument("--output", metavar="PATH", help="Result JSON path (default: beside the CSV)")
-    parser.add_argument("--tier", default="FREE",
-                        help="Apify plan tier for the cost estimate (default FREE)")
     parser.add_argument("--no-video", action="store_true", help="Skip video downloads")
     parser.add_argument("--audio", action="store_true", help="Also download audio")
     parser.add_argument("--audio-format", choices=("raw", "m4a", "mp3"), default="raw")
@@ -230,19 +196,14 @@ def main(argv: list[str] | None = None) -> int:
             if args.limit < 1:
                 raise ConfigurationError("--limit must be a positive integer")
             rows = rows[: args.limit]
-        estimate = estimate_rows(rows, args.tier)
+        estimate = estimate_rows(rows)
     except ConfigurationError as exc:
         print(f"Configuration error: {exc}", file=sys.stderr)
         return 2
 
     print(f"CSV: {csv_path}")
     print(f"Rows: {len(rows)}")
-    print(
-        f"Estimate: {estimate['videos']} video(s), {estimate['billedMinutes']} billed minute(s), "
-        f"{estimate['tier']} tier -> ${estimate['totalUsd']:.4f} estimated "
-        f"(dataset ${estimate['datasetItemUsd']:.4f} + speech ${estimate['speechToTextUsd']:.4f})"
-        + (" [lower bound: some durations unknown]" if estimate["lowerBound"] else "")
-    )
+    print(f"Estimate: {format_estimate(estimate)}")
     print(f"Output: {Path(args.out).expanduser().resolve()}")
 
     if not args.execute:
@@ -291,7 +252,7 @@ def main(argv: list[str] | None = None) -> int:
     payload = sanitize(
         {
             "generatedAt": datetime.now(timezone.utc).isoformat(),
-            "actorId": args.actor_id or os.getenv("APIFY_ACTOR_ID", "apple_yang/facebook-transcript-scraper-api"),
+            "actorId": args.actor_id or os.getenv("APIFY_ACTOR_ID", "apple_yang/facebook-video-audio-downloader"),
             "build": args.build,
             "source": str(csv_path),
             "outputDir": str(Path(args.out).expanduser().resolve()),

@@ -1,15 +1,15 @@
 # Facebook Video & Audio Downloader
 
-Download the **video file, the audio track, the transcript, and the metadata** for a public
-Facebook video. The page is resolved by the Apify Actor
-[`apple_yang/facebook-transcript-scraper-api`](https://apify.com/apple_yang/facebook-transcript-scraper-api);
+Download the **video file, the audio track, and the metadata** for a public Facebook video. The page
+is resolved by the Apify Actor
+[`apple_yang/facebook-video-audio-downloader`](https://apify.com/apple_yang/facebook-video-audio-downloader);
 this repository is the download kit around it — four reference clients, a CSV batch runner, cost
 estimation, an audited contract, and offline tests.
 
 It is **not** the Actor source and it hosts no service.
 
-**[Actor on Apify](https://apify.com/apple_yang/facebook-transcript-scraper-api)** ·
-**[Pricing](https://apify.com/apple_yang/facebook-transcript-scraper-api/pricing)** ·
+**[Actor on Apify](https://apify.com/apple_yang/facebook-video-audio-downloader)** ·
+**[Pricing](https://apify.com/apple_yang/facebook-video-audio-downloader/pricing)** ·
 **[Quick start](docs/quickstart.md)**
 
 ## What you get per video
@@ -18,14 +18,13 @@ It is **not** the Actor source and it hosts no service.
 downloads/<form>-<id>-<title-slug>/
 ├── video.mp4          the video track (default)
 ├── audio.mp4          audio-only MP4, on request; .m4a/.mp3 after an optional remux
-├── transcript.txt     plain text, empty when the video has no speech
-├── segments.json      [{ "start": 0.0, "end": 1.68, "text": "..." }, ...] in seconds
 ├── metadata.json      the Actor item with signed URLs reduced to scheme://host/path
 └── manifest.json      Run ID, sizes, SHA-256, download time, and redacted media sources
 ```
 
 Every language client writes this exact layout, so a folder started by one can be resumed or
-inspected by another.
+inspected by another. The Actor does not return a transcript, so the kit writes no transcript
+sidecars.
 
 ## Quick start
 
@@ -35,7 +34,7 @@ python3 examples/python/download.py 'https://www.facebook.com/watch/?v=113178425
 ```
 
 ```text
-success: downloads/watch-1131784255863745-51531  segments=13  video.mp4, audio.mp4
+success: downloads/watch-1131784255863745-51531  video.mp4, audio.mp4
 ```
 
 Node.js, Go, and Java do the same thing:
@@ -51,26 +50,26 @@ node examples/nodejs/download.mjs 'https://www.facebook.com/watch/?v=11317842558
 
 | Stage | What happens | Cost |
 | --- | --- | --- |
-| 1. Resolve | One Actor Run per URL, pinned to Build 0.0.18 and verified against `buildId` | $0.0055 for a video under one minute |
+| 1. Resolve | One Actor Run per URL, pinned to Build 0.0.17 and verified against `buildId` | $0.005 per dataset item |
 | 2. Download | Signed `videoUrl` / `audioUrl` are fetched immediately, resuming with `Range` | free (CDN transfer, not billed by Apify) |
-| 3. Write | Text, segments, metadata, and a manifest land next to the media | free |
+| 3. Write | Metadata and a manifest land next to the media | free |
 
 - **The links expire.** They are signed CDN URLs, valid for hours, not days. Download right after
   the Run; do not store a URL and fetch it tomorrow.
-- **A failed Run still costs $0.001** (one dataset item, no `speech2text` event).
+- **A failed Run can still cost $0.005** if it writes an item carrying `errMsg`.
 - **Re-running is cheap and idempotent.** The same URL reuses its folder and skips files that are
   still the recorded size; only the Actor Run is billed again.
-- **A missing transcript is not a download failure.** Silent videos still produce media; the status
-  is `no_transcript` and the exit code stays 0.
+- **One URL per Run.** The Actor's input is a `videoUrls` array; this kit deliberately submits a
+  single-element array so every CSV row keeps its own Run ID, status, and output folder.
 
 ## Clients
 
 | Client | Single URL | CSV batch | Resume a partial download | ffmpeg remux | Offline tests |
 | --- | --- | --- | --- | --- | --- |
-| [Python 3.10+](examples/python/README.md) | `download.py` | `batch_download.py` | yes | `--audio-format` | 61 tests |
-| [Node.js 18+](examples/nodejs/README.md) | `download.mjs` | `batch-download.mjs` | yes | `--audio-format` | 34 tests |
-| [Go 1.22+](examples/go/README.md) | `cmd/download` | `cmd/batch-download` | yes | `-audio-format` | 62 tests |
-| [Java 17+](examples/java/README.md) | `Download` | `BatchDownload` | yes | `--audio-format` | 149 assertions |
+| [Python 3.10+](examples/python/README.md) | `download.py` | `batch_download.py` | yes | `--audio-format` | 57 tests |
+| [Node.js 18+](examples/nodejs/README.md) | `download.mjs` | `batch-download.mjs` | yes | `--audio-format` | 32 tests |
+| [Go 1.22+](examples/go/README.md) | `cmd/download` | `cmd/batch-download` | yes | `-audio-format` | 57 tests |
+| [Java 17+](examples/java/README.md) | `Download` | `BatchDownload` | yes | `--audio-format` | see runner output |
 
 All four are dependency-free: Python uses the standard library, Node uses built-in `fetch`, Go uses
 `net/http`, and Java uses `java.net.http` with a small hand-written JSON reader.
@@ -79,7 +78,7 @@ All four are dependency-free: Python uses the standard library, Node uses built-
 
 | Code | Meaning |
 | --- | --- |
-| 0 | Media downloaded (or already present). `no_transcript` also exits 0 |
+| 0 | Media downloaded (or already present) |
 | 2 | Configuration error — bad URL, missing token, bad charge cap |
 | 4 | The Actor reported an item error (`errMsg`), no media downloaded |
 | 5 | The Dataset was empty |
@@ -107,17 +106,16 @@ All four are dependency-free: Python uses the standard library, Node uses built-
 | [Download behaviour](docs/download-behaviour.md) | Naming, resumption, idempotency, expiry, ffmpeg |
 | [Input and output fields](docs/input-output-fields.md) | Accepted URL forms, every Actor field, sidecar schemas |
 | [Batch processing](docs/batch-processing-guide.md) | CSV format, plan-only mode, concurrency, result file |
-| [Cost and limits](docs/cost-and-limits.md) | The two billed events, worked examples, caps |
-| [Error handling](docs/error-handling-and-retries.md) | Status vocabulary, retry rules, the intermittent `no audio url found` |
+| [Cost and limits](docs/cost-and-limits.md) | The single billed event, worked examples, caps |
+| [Error handling](docs/error-handling-and-retries.md) | Status vocabulary and retry rules |
 | [Compatibility](docs/compatibility.md) | What is verified live and what is not |
-| [FAQ](docs/faq.md) | Media type, expiry, silent videos, legal use |
-| [Actor audit](docs/audit/actor_audit_20261028.md) | The contract this kit is built against |
-| [Live run record](docs/audit/live_run_download_20261028.md) | Every real Run, its cost, and the defects running it exposed |
+| [FAQ](docs/faq.md) | Media type, expiry, audio-only videos, legal use |
+| [Actor audit](docs/audit/actor_audit_20261120.md) | The contract this kit is built against |
 
 ## Scope and limits
 
 - Public videos only. No login, no cookies, no private or friends-only content.
-- One URL per Run. There is no bulk mode in the Actor; batching is client-side.
+- One URL per Run. The Actor's `videoUrls` array is sent with one element; batching is client-side.
 - `audioUrl` is an **audio-only MP4** (DASH), not an MP3. Use `--audio-format m4a` for a lossless
   remux or `mp3` to re-encode.
 - Download the media you have the right to download. The kit does not grant any license to the

@@ -6,7 +6,7 @@ Go 1.22+. Standard library only.
 
 | Path | Role |
 | --- | --- |
-| `downloader/client.go` | Actor API: URL validation, `GetTranscript`, pinned Build verification |
+| `downloader/client.go` | Actor API: URL validation, `ResolveMedia`, pinned Build verification |
 | `downloader/reliable_actor.go` | Three-stage runner: create once, poll, read the Dataset |
 | `downloader/media.go` | Resumable download, SHA-256, redaction, ffmpeg remux |
 | `downloader/layout.go` | Folder naming, sidecar files, manifest |
@@ -57,5 +57,5 @@ go run ./cmd/batch-download ../../sample-data/videos.csv -execute    # billed pe
 cd examples/go && go test ./... -v
 ```
 
-62 tests: media resumption against `httptest`, layout rules, the end-to-end pipeline against a fake
+57 tests: media resumption against `httptest`, layout rules, the end-to-end pipeline against a fake
 Actor, CSV parsing (including a BOM-prefixed header), argument reordering, and `.env` discovery.

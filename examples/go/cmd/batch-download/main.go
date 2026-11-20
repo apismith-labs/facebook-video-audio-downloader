@@ -23,11 +23,10 @@ import (
 )
 
 type row struct {
-	RowID           string
-	URL             string
-	CanonicalURL    string
-	URLForm         string
-	DurationSeconds *float64
+	RowID        string
+	URL          string
+	CanonicalURL string
+	URLForm      string
 }
 
 func parseRows(path string) ([]row, error) {
@@ -58,7 +57,6 @@ func parseRows(path string) ([]row, error) {
 	if !ok {
 		return nil, fmt.Errorf("CSV must have a 'videoUrl' or 'url' column")
 	}
-	durationIndex, hasDuration := header["durationseconds"]
 
 	rows := []row{}
 	for index := 1; index < len(records); index++ {
@@ -75,21 +73,7 @@ func parseRows(path string) ([]row, error) {
 		if err != nil {
 			return nil, fmt.Errorf("CSV line %s: %w", line, err)
 		}
-		current := row{RowID: line, URL: rawURL, CanonicalURL: canonical, URLForm: form}
-		if hasDuration && durationIndex < len(record) {
-			value := strings.TrimSpace(record[durationIndex])
-			if value != "" {
-				seconds, convErr := strconv.ParseFloat(value, 64)
-				if convErr != nil {
-					return nil, fmt.Errorf("CSV line %s: durationSeconds must be a number", line)
-				}
-				if seconds < 0 {
-					return nil, fmt.Errorf("CSV line %s: durationSeconds must not be negative", line)
-				}
-				current.DurationSeconds = &seconds
-			}
-		}
-		rows = append(rows, current)
+		rows = append(rows, row{RowID: line, URL: rawURL, CanonicalURL: canonical, URLForm: form})
 	}
 	if len(rows) == 0 {
 		return nil, fmt.Errorf("CSV contains no non-empty URL rows")
@@ -97,27 +81,14 @@ func parseRows(path string) ([]row, error) {
 	return rows, nil
 }
 
-func estimate(rows []row, tier string) (map[string]any, error) {
-	total := 0.0
-	minutes := 0
-	for _, current := range rows {
-		seconds := 0.0
-		if current.DurationSeconds != nil {
-			seconds = *current.DurationSeconds
-		}
-		cost, err := downloader.EstimateCost(1, seconds, tier)
-		if err != nil {
-			return nil, err
-		}
-		total += cost
-		minutes += downloader.BilledMinutes(seconds)
+func estimate(rows []row) (map[string]any, error) {
+	total, err := downloader.EstimateCost(len(rows))
+	if err != nil {
+		return nil, err
 	}
 	return map[string]any{
-		"tier":          strings.ToUpper(tier),
-		"videos":        len(rows),
-		"billedMinutes": minutes,
-		"totalUsd":      total,
-		"lowerBound":    true,
+		"videos":   len(rows),
+		"totalUsd": total,
 	}, nil
 }
 
@@ -127,7 +98,6 @@ func main() {
 	limit := flag.Int("limit", 0, "process only the first N rows")
 	concurrency := flag.Int("max-concurrency", 3, "concurrent rows")
 	output := flag.String("output", "", "result JSON path")
-	tier := flag.String("tier", "FREE", "Apify plan tier for the estimate")
 	noVideo := flag.Bool("no-video", false, "skip video downloads")
 	audio := flag.Bool("audio", false, "also download audio")
 	audioFormat := flag.String("audio-format", "raw", "raw, m4a, or mp3")
@@ -140,7 +110,7 @@ func main() {
 	requireCap := flag.Bool("require-charge-cap", false, "fail before any Run without a cap")
 	// The documented form puts the CSV path first, so reorder before the flag package stops at it.
 	flag.CommandLine.Parse(cliargs.Reorder(os.Args[1:], map[string]bool{
-		"out": true, "limit": true, "max-concurrency": true, "output": true, "tier": true,
+		"out": true, "limit": true, "max-concurrency": true, "output": true,
 		"audio-format": true, "timeout": true, "build": true, "actor-id": true,
 		"dataset-limit": true, "max-total-charge-usd": true,
 	}))
@@ -163,16 +133,16 @@ func main() {
 	if *limit > 0 && *limit < len(rows) {
 		rows = rows[:*limit]
 	}
-	estimateValue, err := estimate(rows, *tier)
+	estimateValue, err := estimate(rows)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "Configuration error:", err)
 		os.Exit(2)
 	}
 
 	fmt.Printf("CSV: %s\nRows: %d\n", csvPath, len(rows))
-	fmt.Printf("Estimate: %d video(s), %v billed minute(s), %s tier -> %s estimated (media transfer is free)\n",
-		estimateValue["videos"], estimateValue["billedMinutes"], estimateValue["tier"],
-		downloader.FormatUSD(estimateValue["totalUsd"].(float64)))
+	fmt.Printf("Estimate: %d video(s) -> %s estimated (%s per result)\n",
+		estimateValue["videos"], downloader.FormatUSD(estimateValue["totalUsd"].(float64)),
+		downloader.FormatUSD(downloader.ResultUSD))
 	absoluteOut, _ := filepath.Abs(*out)
 	fmt.Printf("Output: %s\n", absoluteOut)
 

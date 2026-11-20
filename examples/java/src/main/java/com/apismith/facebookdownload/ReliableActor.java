@@ -20,15 +20,15 @@ import java.util.Map;
 import java.util.regex.Pattern;
 
 /**
- * Staged runner for the Facebook Transcript Actor.
+ * Staged runner for the Facebook Video & Audio Downloader Actor.
  *
  * <p>The three stages — create, poll, read Dataset — are separated because each
  * has a different retry rule. Run creation is attempted exactly once.
  */
 public final class ReliableActor {
-    public static final String APPROVED_BUILD_NUMBER = "0.0.18";
-    public static final String APPROVED_BUILD_ID = "fZIlpYENof2jYqIJc";
-    public static final String DEFAULT_ACTOR_ID = "apple_yang/facebook-transcript-scraper-api";
+    public static final String APPROVED_BUILD_NUMBER = "0.0.17";
+    public static final String APPROVED_BUILD_ID = "WGTQiWxajo00DTQ5X";
+    public static final String DEFAULT_ACTOR_ID = "apple_yang/facebook-video-audio-downloader";
     public static final int DEFAULT_TIMEOUT_SECONDS = 900;
     public static final int DEFAULT_DATASET_LIMIT = 100;
 
@@ -36,7 +36,6 @@ public final class ReliableActor {
             "success", 0,
             "actor_error", 4,
             "empty", 5,
-            "no_transcript", 6,
             "unknown", 7,
             "transport_error", 8,
             "run_failed", 9,
@@ -295,7 +294,7 @@ public final class ReliableActor {
     public record Classification(String status, String message) {
     }
 
-    /** Applies the documented precedence: empty, errMsg, text, no_transcript, unknown. */
+    /** Applies the documented precedence: empty, errMsg, usable media URL, unsupported type. */
     public static Classification classifyItems(List<Object> items) {
         if (items == null) {
             return new Classification("unknown", "Dataset response is not an item list");
@@ -325,66 +324,21 @@ public final class ReliableActor {
         }
 
         for (Map<String, Object> item : objects) {
-            if (item.get("text") instanceof String text && !text.isBlank()) {
-                return new Classification("success", "");
+            for (String field : List.of("videoUrl", "audioUrl")) {
+                Object raw = item.get(field);
+                if (raw == null) {
+                    continue;
+                }
+                if (raw instanceof String text) {
+                    if (!text.isBlank()) {
+                        return new Classification("success", "");
+                    }
+                    continue;
+                }
+                return new Classification("unknown", field + " has an unsupported type");
             }
         }
-        for (Map<String, Object> item : objects) {
-            if (item.containsKey("text") && item.get("text") == null) {
-                return new Classification("no_transcript", "Transcript text is null");
-            }
-        }
-        for (Map<String, Object> item : objects) {
-            if (!item.containsKey("text")) {
-                return new Classification("no_transcript", "Transcript text is absent");
-            }
-        }
-        for (Map<String, Object> item : objects) {
-            if (item.get("text") instanceof String text && text.isBlank()) {
-                return new Classification("no_transcript", "Transcript text is empty");
-            }
-        }
-        return new Classification("unknown", "Transcript text has an unsupported type");
-    }
-
-    /** Keeps only well-formed segments; raw items stay untouched. */
-    public static List<Map<String, Object>> normalizeSegments(Object value) {
-        List<Map<String, Object>> result = new ArrayList<>();
-        List<Object> list = Json.asList(value);
-        if (list == null) {
-            return result;
-        }
-        for (Object entry : list) {
-            if (!(entry instanceof Map)) {
-                continue;
-            }
-            Map<String, Object> object = Json.asObject(entry);
-            Double start = asDouble(object.get("start"));
-            Double end = asDouble(object.get("end"));
-            Object text = object.get("text");
-            if (start == null || end == null || !(text instanceof String)) {
-                continue;
-            }
-            if (start.isNaN() || end.isNaN() || start.isInfinite() || end.isInfinite()) {
-                continue;
-            }
-            if (start < 0 || end < start) {
-                continue;
-            }
-            Map<String, Object> segment = new LinkedHashMap<>();
-            segment.put("start", start);
-            segment.put("end", end);
-            segment.put("text", text);
-            result.add(segment);
-        }
-        return result;
-    }
-
-    private static Double asDouble(Object value) {
-        if (value instanceof Number number) {
-            return number.doubleValue();
-        }
-        return null;
+        return new Classification("unknown", "Dataset item carries no videoUrl or audioUrl");
     }
 
     /** Everything ExecuteInput needs; zero values use the documented defaults. */

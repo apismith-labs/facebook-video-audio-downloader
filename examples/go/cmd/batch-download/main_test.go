@@ -28,9 +28,6 @@ func TestParseRowsStripsAByteOrderMark(t *testing.T) {
 	if rows[0].URLForm != "watch" {
 		t.Fatalf("url form = %q", rows[0].URLForm)
 	}
-	if rows[0].DurationSeconds == nil || *rows[0].DurationSeconds != 42.261 {
-		t.Fatalf("duration = %v", rows[0].DurationSeconds)
-	}
 }
 
 func TestParseRowsAcceptsAUrlColumn(t *testing.T) {

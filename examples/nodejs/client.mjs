@@ -1,5 +1,5 @@
 /**
- * Synchronous integration API for the Facebook Transcript Actor.
+ * Synchronous integration API for the Facebook Video & Audio Downloader Actor.
  *
  * Importing this module reads no credentials, creates no files, and performs no network calls.
  */
@@ -12,7 +12,6 @@ import {
   RestTransport,
   buildRunInput,
   executeInput,
-  normalizeSegments,
   safeError,
   validateBuild,
   validateRunChargeCap,
@@ -62,17 +61,17 @@ const SHARE = /^\/share\/(?<kind>[vr])\/(?<code>[A-Za-z0-9_-]+)\/?$/i;
 const SHORT = /^\/(?<code>[A-Za-z0-9_-]+)\/?$/;
 const ACTOR_ID = /^[A-Za-z0-9][A-Za-z0-9._~/-]*$/;
 
-export class TranscriptClientError extends Error {}
-export class ConfigurationError extends TranscriptClientError {}
-export class CreationUnknownError extends TranscriptClientError {}
-export class TransportError extends TranscriptClientError {
+export class DownloaderError extends Error {}
+export class ConfigurationError extends DownloaderError {}
+export class CreationUnknownError extends DownloaderError {}
+export class TransportError extends DownloaderError {
   constructor(message, { runId = null, datasetId = null } = {}) {
     super(message);
     this.runId = runId;
     this.datasetId = datasetId;
   }
 }
-export class ProtocolError extends TranscriptClientError {
+export class ProtocolError extends DownloaderError {
   constructor(message, { runId = null, datasetId = null } = {}) {
     super(message);
     this.runId = runId;
@@ -200,7 +199,7 @@ function positiveTimeout(value) {
  * Run one public Facebook video URL through the pinned Actor Build.
  * Passing runId performs a GET-only resume of an existing Run.
  */
-export async function getTranscript(url, options = {}) {
+export async function resolveMedia(url, options = {}) {
   const {
     token,
     actorId,
@@ -270,7 +269,7 @@ export async function getTranscript(url, options = {}) {
     throw new CreationUnknownError(
       `Run creation outcome is unknown (Run ID unavailable): ${
         outcome.error || 'reconcile before retrying'
-      }; do not call getTranscript again blindly`,
+      }; do not call resolveMedia again blindly`,
     );
   }
   if (status === 'transport_error') {
@@ -284,7 +283,7 @@ export async function getTranscript(url, options = {}) {
     }
     let detail = outcome.error || 'Apify transport failed';
     if (outcome.runId) {
-      detail += `; Run ${outcome.runId} already exists. Reconcile or resume that Run; do not call getTranscript again to replace it`;
+      detail += `; Run ${outcome.runId} already exists. Reconcile or resume that Run; do not call resolveMedia again to replace it`;
     }
     throw new TransportError(detail, { runId: outcome.runId, datasetId: outcome.datasetId });
   }
@@ -310,8 +309,6 @@ export async function getTranscript(url, options = {}) {
     return {
       ...base,
       status: 'run_failed',
-      text: null,
-      segments: [],
       error: outcome.error || 'Actor Run failed',
       datasetComplete: false,
       title: null,
@@ -321,30 +318,26 @@ export async function getTranscript(url, options = {}) {
     };
   }
 
-  const businessStatuses = new Set(['success', 'actor_error', 'empty', 'no_transcript', 'unknown']);
+  const businessStatuses = new Set(['success', 'actor_error', 'empty', 'unknown']);
   if (!businessStatuses.has(status)) {
     throw new ProtocolError(`Runner returned unsupported status: ${JSON.stringify(status)}`, {
       runId: outcome.runId,
       datasetId: outcome.datasetId,
     });
   }
-
-  const transcriptItem = rawItems.find((item) => typeof item.text === 'string' && item.text.trim()) ?? null;
-  const text = transcriptItem ? transcriptItem.text : null;
-  if (status === 'success' && text === null) {
-    throw new ProtocolError('Runner reported success without a non-empty transcript', {
+  if (status === 'success' && rawItems.length === 0) {
+    throw new ProtocolError('Runner reported success without a Dataset item', {
       runId: outcome.runId,
       datasetId: outcome.datasetId,
     });
   }
-  const metadata = transcriptItem ?? rawItems[0] ?? {};
+
+  const metadata = rawItems[0] ?? {};
   const duration = typeof metadata.duration === 'number' && Number.isFinite(metadata.duration) ? metadata.duration : null;
 
   return {
     ...base,
     status,
-    text,
-    segments: transcriptItem ? normalizeSegments(transcriptItem.segments) : [],
     error: outcome.error || null,
     datasetComplete: outcome.datasetComplete ?? null,
     title: typeof metadata.title === 'string' ? metadata.title : null,

@@ -7,8 +7,7 @@ differently and must not be retried the same way.
 
 | Status | Meaning | Media downloaded | Exit |
 | --- | --- | --- | --- |
-| `success` | Transcript and media available | yes | 0 |
-| `no_transcript` | Media available, no usable speech | yes | 0 |
+| `success` | A `videoUrl` or `audioUrl` is available | yes | 0 |
 | `actor_error` | Item carries a non-empty `errMsg` | no | 4 |
 | `empty` | Dataset has no items | no | 5 |
 | `unknown` | Malformed or unsupported response | no | 7 |
@@ -17,9 +16,6 @@ differently and must not be retried the same way.
 | `creation_unknown` | The POST may have been accepted | no | 10 |
 | `config_error` | Bad URL, token, cap, or flag | no | 2 |
 | `download_failed` | Run succeeded, media transfer failed | partial | 11 |
-
-`no_transcript` is **not** a failure for this kit. The video and audio are the deliverable; an empty
-transcript is a fact about the video, not an error.
 
 ## Retry rules
 
@@ -45,18 +41,18 @@ Not retryable: **403** (expired signature — the same URL cannot work), 404, 41
 Backoff is 1 s, 2 s, 4 s. A `.part` file survives between attempts, so a retry resumes rather than
 restarts.
 
-## The intermittent `no audio url found`
+## `no audio url found`
 
-Observed on 2026-10-28: 2 of 11 otherwise-valid attempts returned a **completed** Run with one
-dataset item carrying:
+This item error was observed on the sibling transcript Actor on 2026-10-28: 2 of 11 otherwise-valid
+attempts returned a **completed** Run with one dataset item carrying:
 
 ```json
-{ "errMsg": "no audio url found", "duration": 0, "text": null }
+{ "errMsg": "no audio url found", "duration": 0, "videoUrl": "…" }
 ```
 
-Re-running the same URL immediately produced a normal result. This is indistinguishable from a
-video with no audio track, and a failing Run **still costs $0.001** (dataset item only, no
-`speech2text`).
+Re-running the same URL immediately produced a normal result. It has not been re-verified on Build
+0.0.17 of this Actor. It is indistinguishable from a video with no audio track, and a failing Run
+that writes an item **still costs $0.005**.
 
 Guidance: retry **once** with a new Run. Do not loop, and do not fan out concurrently — each attempt
 is billed.
@@ -68,7 +64,7 @@ is billed.
 | Bad URL | `ConfigurationError` → 2, no POST | same | same | `ConfigurationException` → 2 |
 | Creation ambiguous | `CreationUnknownError` → 10 | same | same | `CreationUnknownException` → 10 |
 | Build mismatch | `ProtocolError` → 7, no replacement Run | same | same | `ProtocolException` → 7 |
-| Transport during poll | `TranscriptTransportError` → 8 | `TransportError` | `TransportError` | `TransportException` |
+| Transport during poll | `DownloaderTransportError` → 8 | `TransportError` | `TransportError` | `TransportException` |
 | Media 403 | `MediaError` status 403 → 11 | same | same | `MediaException` status 403 |
 
 ## Logging hygiene

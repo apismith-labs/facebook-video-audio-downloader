@@ -11,23 +11,20 @@ import {
   ConfigurationError,
   ProtocolError,
   TransportError,
-  getTranscript,
+  resolveMedia,
 } from './client.mjs';
 import {
   buildManifest,
   chooseOutputDir,
   folderName,
   sanitizeItem,
-  transcriptSegments,
   writeJson,
-  writeText,
 } from './layout.mjs';
 import { MediaError, audioTarget, downloadMedia, redactMediaUrl, transcodeAudio } from './media.mjs';
 
 export const DOWNLOAD_FAILED_EXIT = 11;
-/** Runs that produced usable media; a missing transcript does not block the download. */
-export const DOWNLOADABLE_STATUSES = new Set(['success', 'no_transcript']);
-const TRANSCRIPT_EXIT_CODES = { actor_error: 4, empty: 5, no_transcript: 6, unknown: 7, run_failed: 9 };
+export const DOWNLOADABLE_STATUSES = new Set(['success']);
+const RESOLVE_EXIT_CODES = { actor_error: 4, empty: 5, unknown: 7, run_failed: 9 };
 
 export function emptyReport(sourceUrl) {
   return {
@@ -41,9 +38,7 @@ export function emptyReport(sourceUrl) {
     duration: null,
     title: null,
     nickname: null,
-    segments: 0,
     assets: [],
-    transcript: null,
     error: null,
   };
 }
@@ -79,7 +74,7 @@ export async function downloadOne(url, options = {}) {
   const report = emptyReport(url);
   let result;
   try {
-    result = await getTranscript(url, {
+    result = await resolveMedia(url, {
       token, actorId, build, timeout, maxTotalChargeUsd, requireChargeCap,
       datasetLimit, runId: resume, rowId, transport, journal,
     });
@@ -124,19 +119,10 @@ export async function downloadOne(url, options = {}) {
 
   if (!DOWNLOADABLE_STATUSES.has(result.status)) {
     await writeJson(path.join(target, 'metadata.json'), sanitizeItem(item, { keepMediaUrls }));
-    return { report, exitCode: TRANSCRIPT_EXIT_CODES[result.status] ?? 7 };
+    return { report, exitCode: RESOLVE_EXIT_CODES[result.status] ?? 7 };
   }
 
-  const segments = transcriptSegments(result.segments);
-  const transcriptText = (result.text ?? '').trim();
-  const transcriptBytes = await writeText(
-    path.join(target, 'transcript.txt'),
-    transcriptText ? `${transcriptText}\n` : '',
-  );
-  await writeJson(path.join(target, 'segments.json'), segments);
   await writeJson(path.join(target, 'metadata.json'), sanitizeItem(item, { keepMediaUrls }));
-  report.segments = segments.length;
-  report.transcript = { bytes: transcriptBytes, segments: segments.length };
 
   const jobs = [];
   if (wantVideo && typeof item.videoUrl === 'string' && item.videoUrl) {
@@ -185,8 +171,6 @@ export async function downloadOne(url, options = {}) {
     urlForm: result.urlForm,
     result,
     assets,
-    transcriptBytes,
-    segmentCount: segments.length,
   });
   manifest.mediaSources = jobs.map((job) => ({ kind: job.kind, url: redactMediaUrl(job.url) }));
   await writeJson(path.join(target, 'manifest.json'), manifest);

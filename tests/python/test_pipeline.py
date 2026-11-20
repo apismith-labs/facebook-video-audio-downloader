@@ -24,7 +24,7 @@ BUILD_NUMBER = reliable_actor.APPROVED_BUILD_NUMBER
 BUILD_ID = reliable_actor.APPROVED_BUILD_ID
 
 
-def make_item(video_url: str, audio_url: str, *, text: str | None = "hello world", err: str | None = None):
+def make_item(video_url: str, audio_url: str, *, err: str | None = None):
     return {
         "url": "https://www.facebook.com/reel/9/",
         "title": "Sunset Timelapse",
@@ -39,13 +39,8 @@ def make_item(video_url: str, audio_url: str, *, text: str | None = "hello world
         "duration": 42.261,
         "nickname": "ttvnews",
         "avatarUri": "https://scontent.xx.fbcdn.net/v/avatar.jpg?oh=secret",
-        "text": text,
-        "segments": [
-            {"start": 0, "end": 1.5, "text": "hello"},
-            {"start": 1.5, "end": 3.0, "text": "world"},
-        ] if text else [],
         "errMsg": err,
-        "timestamp": "2026-10-28T00:00:00.000Z",
+        "timestamp": "2026-11-20T00:00:00.000Z",
     }
 
 
@@ -84,7 +79,7 @@ class PipelineTests(unittest.TestCase):
         else:
             os.environ["APIFY_TOKEN"] = self._env
 
-    def test_downloads_video_transcript_and_metadata(self):
+    def test_downloads_video_and_metadata(self):
         with LocalMediaServer(VIDEO_BYTES) as video, LocalMediaServer(AUDIO_BYTES) as audio:
             transport = FakeTransport(run_responses(make_item(video.url, audio.url)))
             report, code = pipeline.download_one(
@@ -95,11 +90,8 @@ class PipelineTests(unittest.TestCase):
         folder = Path(report["outputDir"])
         self.assertEqual(folder.name, "reel-9-sunset-timelapse")
         self.assertEqual((folder / "video.mp4").read_bytes(), VIDEO_BYTES)
-        self.assertEqual((folder / "transcript.txt").read_text(encoding="utf-8"), "hello world\n")
-        self.assertEqual(json.loads((folder / "segments.json").read_text()), [
-            {"start": 0.0, "end": 1.5, "text": "hello"},
-            {"start": 1.5, "end": 3.0, "text": "world"},
-        ])
+        self.assertFalse((folder / "transcript.txt").exists())
+        self.assertFalse((folder / "segments.json").exists())
         metadata = json.loads((folder / "metadata.json").read_text())
         self.assertEqual(metadata["videoUrl"], video.url.split("?")[0])
         self.assertEqual(metadata["likesCount"], 33)
@@ -107,10 +99,11 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(manifest["schemaVersion"], 1)
         self.assertEqual(manifest["runId"], "RUN1")
         self.assertEqual(manifest["duration"], 42.261)
-        self.assertEqual(report["segments"], 2)
+        self.assertNotIn("transcript", manifest)
         # The audio track is only fetched on request.
         self.assertFalse((folder / "audio.mp4").exists())
         self.assertEqual(transport.post_count, 1)
+        self.assertEqual(transport.requests[0]["body"], {"videoUrls": ["https://www.facebook.com/reel/9/"]})
 
     def test_audio_is_downloaded_on_request(self):
         with LocalMediaServer(VIDEO_BYTES) as video, LocalMediaServer(AUDIO_BYTES) as audio:
@@ -143,23 +136,9 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(first["outputDir"], second["outputDir"])
         self.assertTrue(second["assets"][0]["skipped"])
 
-    def test_missing_transcript_still_downloads_media(self):
-        with LocalMediaServer(VIDEO_BYTES) as video, LocalMediaServer(AUDIO_BYTES) as audio:
-            transport = FakeTransport(run_responses(make_item(video.url, audio.url, text=None)))
-            report, code = pipeline.download_one(
-                "https://www.facebook.com/reel/9/", out_dir=self.out, transport=transport
-            )
-
-        self.assertEqual(code, 0)
-        self.assertEqual(report["status"], "no_transcript")
-        self.assertEqual(report["segments"], 0)
-        folder = Path(report["outputDir"])
-        self.assertTrue((folder / "video.mp4").is_file())
-        self.assertEqual((folder / "transcript.txt").read_text(encoding="utf-8"), "")
-
     def test_actor_error_writes_metadata_but_no_media(self):
         with LocalMediaServer(VIDEO_BYTES) as video, LocalMediaServer(AUDIO_BYTES) as audio:
-            item = make_item(video.url, audio.url, text=None, err="no audio url found")
+            item = make_item(video.url, audio.url, err="no audio url found")
             transport = FakeTransport(run_responses(item))
             report, code = pipeline.download_one(
                 "https://www.facebook.com/reel/9/", out_dir=self.out, transport=transport
@@ -172,14 +151,15 @@ class PipelineTests(unittest.TestCase):
         self.assertFalse((folder / "video.mp4").exists())
         self.assertEqual(transport.post_count, 1)
 
-    def test_missing_media_url_reports_download_failure(self):
+    def test_missing_media_url_is_unknown(self):
         item = make_item("", "")
         transport = FakeTransport(run_responses(item))
         report, code = pipeline.download_one(
             "https://www.facebook.com/reel/9/", out_dir=self.out, transport=transport
         )
-        self.assertEqual(code, pipeline.DOWNLOAD_FAILED_EXIT)
-        self.assertIn("no media URL", report["error"])
+        self.assertEqual(code, 7)
+        self.assertEqual(report["status"], "unknown")
+        self.assertIn("no videoUrl or audioUrl", report["error"])
 
     def test_unreachable_media_url_reports_download_failure(self):
         item = make_item("http://127.0.0.1:9/nothing.mp4", "http://127.0.0.1:9/nothing.mp4")
@@ -189,9 +169,8 @@ class PipelineTests(unittest.TestCase):
         )
         self.assertEqual(code, pipeline.DOWNLOAD_FAILED_EXIT)
         self.assertIn("download failed", report["error"])
-        # The transcript is still written; only the media step failed.
         folder = Path(report["outputDir"])
-        self.assertTrue((folder / "transcript.txt").is_file())
+        self.assertTrue((folder / "metadata.json").is_file())
 
     def test_force_rederives_the_converted_container(self):
         calls: list[str] = []

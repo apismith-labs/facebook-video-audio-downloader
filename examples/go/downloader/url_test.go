@@ -80,10 +80,10 @@ func TestValidateBuild(t *testing.T) {
 	if _, err := ValidateBuild("latest", false); err == nil {
 		t.Fatal("latest must be rejected")
 	}
-	if _, err := ValidateBuild("0.0.19", true); err == nil {
+	if _, err := ValidateBuild("9.9.9", true); err == nil {
 		t.Fatal("a different build must be rejected when required")
 	}
-	if build, err := ValidateBuild("0.0.18", true); err != nil || build != ApprovedBuildNumber {
+	if build, err := ValidateBuild(ApprovedBuildNumber, true); err != nil || build != ApprovedBuildNumber {
 		t.Fatalf("pinned build should pass, got %q %v", build, err)
 	}
 }

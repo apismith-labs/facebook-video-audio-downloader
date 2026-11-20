@@ -42,9 +42,6 @@ func (e *TransportError) Error() string { return e.Message }
 // fields, including ones this client does not know about.
 type Result struct {
 	Status          string
-	Text            string
-	HasText         bool
-	Segments        []map[string]any
 	Items           []any
 	RunID           string
 	DatasetID       string
@@ -79,7 +76,7 @@ func (r Result) ExitCode() int {
 	return ExitProtocol
 }
 
-// Options configures GetTranscript. Zero values fall back to environment
+// Options configures ResolveMedia. Zero values fall back to environment
 // variables and the same defaults as the Python client.
 type Options struct {
 	Token             string
@@ -98,12 +95,12 @@ type Options struct {
 	MaxAttempts int
 }
 
-// GetTranscript runs one public Facebook video URL through the pinned Build.
+// ResolveMedia runs one public Facebook video URL through the pinned Build.
 //
 // Token selection: Options.Token, then APIFY_TOKEN. Transport and Journal are
 // injection seams for offline tests. Setting RunID performs a GET-only resume;
 // no create POST is issued.
-func GetTranscript(ctx context.Context, rawURL string, options Options) (Result, error) {
+func ResolveMedia(ctx context.Context, rawURL string, options Options) (Result, error) {
 	canonical, form, err := ValidateVideoURL(rawURL)
 	if err != nil {
 		return Result{}, &ConfigurationError{Message: err.Error()}
@@ -162,7 +159,7 @@ func GetTranscript(ctx context.Context, rawURL string, options Options) (Result,
 	outcome := ExecuteInput(ctx, RunOptions{
 		Transport:         activeTransport,
 		ActorID:           actorID,
-		Input:             map[string]any{"videoUrl": canonical},
+		Input:             map[string]any{"videoUrls": []string{canonical}},
 		SourceURL:         canonical,
 		Journal:           options.Journal,
 		Timeout:           timeout,
@@ -194,7 +191,7 @@ func GetTranscript(ctx context.Context, rawURL string, options Options) (Result,
 	switch outcome.Status {
 	case "creation_unknown":
 		return Result{}, &CreationUnknownError{Message: fmt.Sprintf(
-			"Run creation outcome is unknown (Run ID unavailable): %s; do not call GetTranscript again blindly",
+			"Run creation outcome is unknown (Run ID unavailable): %s; do not call ResolveMedia again blindly",
 			firstNonEmpty(outcome.Error, "reconcile before retrying"))}
 	case "transport_error":
 		if outcome.Stage == "build_mismatch" {
@@ -207,7 +204,7 @@ func GetTranscript(ctx context.Context, rawURL string, options Options) (Result,
 		}
 		detail := firstNonEmpty(outcome.Error, "Apify transport failed")
 		if result.RunID != "" {
-			detail = fmt.Sprintf("%s; Run %s already exists. Reconcile or resume that Run; do not call GetTranscript again to replace it",
+			detail = fmt.Sprintf("%s; Run %s already exists. Reconcile or resume that Run; do not call ResolveMedia again to replace it",
 				detail, result.RunID)
 		}
 		return Result{}, &TransportError{Message: detail, RunID: result.RunID, DatasetID: result.DatasetID}
@@ -224,27 +221,19 @@ func GetTranscript(ctx context.Context, rawURL string, options Options) (Result,
 		}
 	}
 
-	var transcriptItem map[string]any
+	var firstItem map[string]any
 	for _, item := range result.Items {
 		object, ok := item.(map[string]any)
 		if !ok {
 			return Result{}, &ProtocolError{Message: "Runner returned malformed Dataset items", RunID: result.RunID, DatasetID: result.DatasetID}
 		}
-		if transcriptItem == nil {
-			if text, ok := object["text"].(string); ok && strings.TrimSpace(text) != "" {
-				transcriptItem = object
-			}
+		if firstItem == nil {
+			firstItem = object
 		}
 	}
-
-	if transcriptItem != nil {
-		result.Text, _ = transcriptItem["text"].(string)
-		result.HasText = strings.TrimSpace(result.Text) != ""
-		result.Segments = NormalizeSegments(transcriptItem["segments"])
-	}
-	if result.Status == "success" && !result.HasText {
+	if result.Status == "success" && firstItem == nil {
 		return Result{}, &ProtocolError{
-			Message:   "Runner reported success without a non-empty transcript",
+			Message:   "Runner reported success without a Dataset item",
 			RunID:     result.RunID,
 			DatasetID: result.DatasetID,
 		}
@@ -253,14 +242,10 @@ func GetTranscript(ctx context.Context, rawURL string, options Options) (Result,
 	if outcome.DatasetComplete != nil {
 		result.DatasetComplete = *outcome.DatasetComplete
 	}
-	metadata := transcriptItem
-	if metadata == nil && len(result.Items) > 0 {
-		metadata, _ = result.Items[0].(map[string]any)
-	}
-	if metadata != nil {
-		result.Title = stringValue(metadata["title"])
-		result.Nickname = stringValue(metadata["nickname"])
-		if duration, ok := number(metadata["duration"]); ok {
+	if firstItem != nil {
+		result.Title = stringValue(firstItem["title"])
+		result.Nickname = stringValue(firstItem["nickname"])
+		if duration, ok := number(firstItem["duration"]); ok {
 			result.Duration = duration
 			result.HasDuration = true
 		}
@@ -286,21 +271,13 @@ func firstNonEmpty(values ...string) string {
 	return ""
 }
 
-// EstimateCost implements the two-event pricing model:
-// $0.001 per dataset item plus a per-started-minute transcription fee.
-func EstimateCost(videos int, secondsPerVideo float64, tier string) (float64, error) {
-	price, ok := TierPricesUSD[tier]
-	if !ok {
-		return 0, fmt.Errorf("unknown tier %q", tier)
-	}
+// EstimateCost implements the flat per-result pricing model: each video submitted
+// as its own Run is billed one dataset item.
+func EstimateCost(videos int) (float64, error) {
 	if videos < 0 {
 		return 0, fmt.Errorf("videos must not be negative")
 	}
-	if secondsPerVideo < 0 {
-		return 0, fmt.Errorf("duration must not be negative")
-	}
-	minutes := BilledMinutes(secondsPerVideo)
-	return float64(videos) * (DatasetItemUSD + float64(minutes)*price), nil
+	return float64(videos) * ResultUSD, nil
 }
 
 // FormatUSD renders an estimate the same way the other clients do.

@@ -7,11 +7,10 @@ what `audioUrl` points at. `--audio-format raw` (the default) saves it unchanged
 Use `--audio-format m4a` for a lossless remux with an audio extension, or `mp3` to re-encode at
 192 kbit/s.
 
-### Why is `transcript.txt` empty but the video downloaded?
+### Why is there no transcript file?
 
-The video has no speech the Actor could transcribe, or transcription failed. That is
-`no_transcript`, which this kit treats as a successful download — the media is the deliverable. The
-exit code is still 0.
+The Actor is a video and audio downloader; its dataset has no `text` or `segments` field. If you
+need a transcript, use the sibling `apple_yang/facebook-transcript-scraper-api` Actor.
 
 ### Do I need ffmpeg?
 
@@ -20,14 +19,14 @@ Only for `--audio-format m4a` or `mp3`. Everything else, including `raw` audio, 
 
 ### How long is a download link valid?
 
-Hours, not days. The URL carries a signature with an expiry; a same-day link worked, an exact TTL
-was not measured. The kit downloads immediately after the Run and never stores the URL, so this only
-matters if you keep a URL outside the tool.
+Hours, not days, based on how Facebook signs CDN links. The exact TTL of a link from Build 0.0.17
+has not been measured. The kit downloads immediately after the Run and never stores the URL, so this
+only matters if you keep a URL outside the tool.
 
 ### Can I resume a download tomorrow?
 
 Not against the old link — it is probably expired, and a 403 is not retried. Re-run the URL (a new
-Run, $0.0055) and the new link is downloaded into the same folder. If the old `.part` belongs to a
+Run, $0.005) and the new link is downloaded into the same folder. If the old `.part` belongs to a
 different link, delete it or pass `--force`.
 
 ### Why does the folder name have no title for Chinese videos?
@@ -39,8 +38,8 @@ own.
 ### Why does re-running still cost money?
 
 Because it creates a new Actor Run. The media is skipped (no transfer), but resolution is the paid
-step. Use `--resume <RUN_ID>` to reuse an existing Run without a new charge when you only need to
-re-download the files.
+step ($0.005). Use `--resume <RUN_ID>` to reuse an existing Run without a new charge when you only
+need to re-download the files.
 
 ### Can I download a private or friends-only video?
 
@@ -73,5 +72,5 @@ to any video and is not a circumvention tool. Download only what you have the ri
 
 ### Why is there no Rust client?
 
-The reference project for this Actor ships Python, Node.js, Go, Java, and cURL. A Rust client that
-could not be compiled and tested in CI would be a liability, so it is deliberately absent.
+This repository ships Python, Node.js, Go, Java, and cURL examples. A Rust client that could not be
+compiled and tested in CI would be a liability, so it is deliberately absent.

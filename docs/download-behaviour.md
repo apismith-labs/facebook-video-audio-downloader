@@ -7,13 +7,14 @@ How the kit turns a signed CDN link into a file that you can trust, resume, and 
 The Actor returns `videoUrl` and `audioUrl` as signed URLs on `fbcdn.net`. The signature is in the
 query string (`oh`, `oe`, `sig`, …). Two consequences drive the whole design:
 
-- **Download immediately.** The link is valid for hours. A URL stored yesterday may answer 403
-  today, and retrying the same URL will not help.
+- **Download immediately.** The links are short-lived. A URL stored yesterday may answer 403 today,
+  and retrying the same URL will not help.
 - **Never persist the URL.** `metadata.json` and `manifest.json` strip the query string unless you
   pass `--keep-media-urls`. A signed URL in a log or a commit is a leaked credential.
 
-Verified on 2026-10-28: both links answered `200` with `Content-Type: video/mp4` **without** a
-browser User-Agent or a `Referer`, and both supported `Range`. No cookie is involved.
+Live verification of the signed links against Build 0.0.17 is pending; see
+[compatibility](compatibility.md). The download layer treats both links as temporary credentials
+regardless.
 
 ## 2. Folder naming
 
@@ -71,7 +72,7 @@ Re-running the same URL:
 
 - reuses the existing folder (matched by `canonicalUrl` in `manifest.json`);
 - skips a file whose size still matches, without any network request;
-- rewrites the transcript, segments, metadata, and manifest from the new Run.
+- rewrites `metadata.json` and `manifest.json` from the new Run.
 
 That means a batch can be re-run after a partial failure and only pay for the Runs it repeats. Add
 `--force` to re-download the media anyway.
@@ -98,8 +99,7 @@ tool insists on an audio extension; the bytes are already an AAC track.
 
 ## 6. What is not downloaded
 
-- **No subtitle or SRT file.** `segments.json` carries `{start, end, text}` in seconds; convert it
-  to any subtitle format you need.
+- **No transcript or subtitle file.** The Actor does not return `text` or `segments`.
 - **No thumbnails.** `avatarUri` is the uploader's avatar, not a video frame, and it is redacted in
   `metadata.json` like the media URLs.
 - **No playlists.** One URL is one video; there is no profile or listing mode.
@@ -112,6 +112,5 @@ tool insists on an audio extension; the bytes are already an AAC track.
 | Network drop mid-transfer | Up to 3 attempts with 1/2/4 s backoff; the `.part` survives |
 | Server ignores `Range` | Restarts from zero automatically |
 | Disk full | Exit 11, `.part` left for inspection |
-| Transcript missing | Not an error: media downloads, `transcript.txt` is empty |
 | Actor error | Exit 4, only `metadata.json` is written for evidence |
 | Run creation ambiguous | Exit 10; reconcile by Run ID, never POST again |

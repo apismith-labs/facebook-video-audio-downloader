@@ -158,39 +158,6 @@ public final class Layout {
         return cleaned;
     }
 
-    /** Keeps only well-formed segments. */
-    public static List<Map<String, Object>> transcriptSegments(List<Map<String, Object>> segments) {
-        List<Map<String, Object>> result = new ArrayList<>();
-        if (segments == null) {
-            return result;
-        }
-        for (Map<String, Object> entry : segments) {
-            if (entry == null) {
-                continue;
-            }
-            Object startValue = entry.get("start");
-            Object endValue = entry.get("end");
-            Object text = entry.get("text");
-            if (!(startValue instanceof Number start) || !(endValue instanceof Number end)) {
-                continue;
-            }
-            if (!(text instanceof String)) {
-                continue;
-            }
-            double startNumber = start.doubleValue();
-            double endNumber = end.doubleValue();
-            if (Double.isNaN(startNumber) || Double.isNaN(endNumber) || startNumber < 0 || endNumber < startNumber) {
-                continue;
-            }
-            Map<String, Object> cleaned = new LinkedHashMap<>();
-            cleaned.put("start", startNumber);
-            cleaned.put("end", endNumber);
-            cleaned.put("text", text);
-            result.add(cleaned);
-        }
-        return result;
-    }
-
     /** Writes UTF-8 text atomically and returns the byte count. */
     public static int writeText(Path target, String text) throws IOException {
         Path parent = target.getParent();
@@ -210,8 +177,7 @@ public final class Layout {
     }
 
     /** Assembles manifest.json. No signed URL is ever included. */
-    public static Map<String, Object> buildManifest(TranscriptClient.Result result, List<Map<String, Object>> assets,
-                                                    int transcriptBytes, int segmentCount,
+    public static Map<String, Object> buildManifest(VideoClient.Result result, List<Map<String, Object>> assets,
                                                     List<Map<String, Object>> mediaSources) {
         Map<String, Object> manifest = new LinkedHashMap<>();
         manifest.put("schemaVersion", MANIFEST_SCHEMA_VERSION);
@@ -226,10 +192,6 @@ public final class Layout {
         manifest.put("duration", result.duration());
         manifest.put("downloadedAt", utcNow());
         manifest.put("assets", assets);
-        Map<String, Object> transcript = new LinkedHashMap<>();
-        transcript.put("bytes", transcriptBytes);
-        transcript.put("segments", segmentCount);
-        manifest.put("transcript", transcript);
         manifest.put("mediaSources", mediaSources);
         manifest.put("notes", List.of(
                 "Media links returned by the Actor are signed and short-lived; they are not stored here.",

@@ -6,7 +6,7 @@ Java 17+. No dependencies; JSON is handled by a small built-in reader/writer.
 
 | Path | Role |
 | --- | --- |
-| `src/main/java/.../TranscriptClient.java` | Actor API: URL validation, `getTranscript`, pinned Build verification |
+| `src/main/java/.../VideoClient.java` | Actor API: URL validation, `resolveMedia`, pinned Build verification |
 | `src/main/java/.../ReliableActor.java` | Three-stage runner: create once, poll, read the Dataset |
 | `src/main/java/.../Media.java` | Resumable download, SHA-256, redaction, ffmpeg remux |
 | `src/main/java/.../Layout.java` | Folder naming, sidecar files, manifest |
@@ -49,6 +49,6 @@ java -cp out com.apismith.facebookdownload.BatchDownload --execute sample-data/v
 cd examples/java && ./run_tests.sh
 ```
 
-Two runners: `OfflineTests` covers the Actor client (94 assertions), `DownloadTests` covers media,
-layout, and the full pipeline (55 assertions). Both use a local JDK `HttpServer` and a fake
-transport — no network, no token.
+Two runners: `OfflineTests` covers the Actor client, `DownloadTests` covers media, layout, and the
+full pipeline. Both use a local JDK `HttpServer` and a fake transport — no network, no token. Each
+runner prints its assertion count.

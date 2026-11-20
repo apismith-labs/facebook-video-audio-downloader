@@ -13,18 +13,16 @@ if __package__:
     from .client import (
         ConfigurationError,
         CreationUnknownError,
+        DownloaderTransportError,
         ProtocolError,
-        TranscriptTransportError,
-        get_transcript,
+        resolve_media,
     )
     from .layout import (
         build_manifest,
         choose_output_dir,
         folder_name,
         sanitize_item,
-        transcript_segments,
         write_json,
-        write_text,
     )
     from .media import MediaError, audio_target, download_media, redact_media_url, transcode_audio
 else:
@@ -32,25 +30,22 @@ else:
     from client import (
         ConfigurationError,
         CreationUnknownError,
+        DownloaderTransportError,
         ProtocolError,
-        TranscriptTransportError,
-        get_transcript,
+        resolve_media,
     )
     from layout import (
         build_manifest,
         choose_output_dir,
         folder_name,
         sanitize_item,
-        transcript_segments,
         write_json,
-        write_text,
     )
     from media import MediaError, audio_target, download_media, redact_media_url, transcode_audio
 
 DOWNLOAD_FAILED_EXIT = 11
-# These Runs produced usable media; a missing transcript does not block the download.
-DOWNLOADABLE_STATUSES = {"success", "no_transcript"}
-TRANSCRIPT_EXIT_CODES = {"actor_error": 4, "empty": 5, "no_transcript": 6, "unknown": 7, "run_failed": 9}
+DOWNLOADABLE_STATUSES = {"success"}
+RESOLVE_EXIT_CODES = {"actor_error": 4, "empty": 5, "unknown": 7, "run_failed": 9}
 
 
 def empty_report(source_url: str) -> dict[str, Any]:
@@ -65,9 +60,7 @@ def empty_report(source_url: str) -> dict[str, Any]:
         "duration": None,
         "title": None,
         "nickname": None,
-        "segments": 0,
         "assets": [],
-        "transcript": None,
         "error": None,
     }
 
@@ -102,7 +95,7 @@ def download_one(
     """
     report = empty_report(url)
     try:
-        result = get_transcript(
+        result = resolve_media(
             url,
             token=token,
             build=build,
@@ -125,7 +118,7 @@ def download_one(
     except ProtocolError as exc:
         report.update(status="unknown", runId=exc.run_id, datasetId=exc.dataset_id, error=str(exc))
         return report, 7
-    except TranscriptTransportError as exc:
+    except DownloaderTransportError as exc:
         report.update(status="transport_error", runId=exc.run_id, datasetId=exc.dataset_id, error=str(exc))
         return report, 8
 
@@ -148,18 +141,10 @@ def download_one(
     if result.status not in DOWNLOADABLE_STATUSES:
         # No usable media: keep the metadata as evidence so the failure can be inspected later.
         write_json(target / "metadata.json", sanitize_item(item, keep_media_urls=keep_media_urls))
-        return report, TRANSCRIPT_EXIT_CODES.get(result.status, 7)
+        return report, RESOLVE_EXIT_CODES.get(result.status, 7)
 
     target.mkdir(parents=True, exist_ok=True)
-    segments = transcript_segments(result.segments)
-    transcript_text = (result.text or "").strip()
-    transcript_bytes = write_text(
-        target / "transcript.txt", transcript_text + ("\n" if transcript_text else "")
-    )
-    write_json(target / "segments.json", segments)
     write_json(target / "metadata.json", sanitize_item(item, keep_media_urls=keep_media_urls))
-    report["segments"] = len(segments)
-    report["transcript"] = {"bytes": transcript_bytes, "segments": len(segments)}
 
     # (kind, url, raw destination, converted destination or None)
     jobs: list[tuple[str, str, Path, Path | None]] = []
@@ -208,8 +193,6 @@ def download_one(
         url_form=result.url_form,
         result=result,
         assets=assets,
-        transcript_bytes=transcript_bytes,
-        segment_count=len(segments),
     )
     manifest["mediaSources"] = [
         {"kind": kind, "url": redact_media_url(media_url)} for kind, media_url, *_ in jobs

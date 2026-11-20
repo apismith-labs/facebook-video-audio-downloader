@@ -10,7 +10,7 @@ import { DOWNLOAD_FAILED_EXIT, downloadOne } from '../../examples/nodejs/pipelin
 const VIDEO = Buffer.from(`\u0000\u0000\u0000\u0018ftypmp42${'v'.repeat(5000)}`, 'binary');
 const AUDIO = Buffer.from(`\u0000\u0000\u0000\u0018ftypmp42${'a'.repeat(2000)}`, 'binary');
 
-function makeItem(videoUrl, audioUrl, { text = 'hello world', errMsg = null } = {}) {
+function makeItem(videoUrl, audioUrl, { errMsg = null } = {}) {
   return {
     url: 'https://www.facebook.com/reel/9/',
     title: 'Sunset Timelapse',
@@ -25,10 +25,8 @@ function makeItem(videoUrl, audioUrl, { text = 'hello world', errMsg = null } = 
     duration: 42.261,
     nickname: 'ttvnews',
     avatarUri: 'https://scontent.xx.fbcdn.net/v/avatar.jpg?oh=secret',
-    text,
-    segments: text ? [{ start: 0, end: 1.5, text: 'hello' }, { start: 1.5, end: 3, text: 'world' }] : [],
     errMsg,
-    timestamp: '2026-10-28T00:00:00.000Z',
+    timestamp: '2026-11-20T00:00:00.000Z',
   };
 }
 
@@ -49,7 +47,7 @@ async function withToken(run) {
   }
 }
 
-test('downloads video, transcript, and metadata', async () => {
+test('downloads video and metadata', async () => {
   const out = await tempDir();
   await withToken(async () => {
     await withServer(VIDEO, {}, async (videoUrl) => {
@@ -60,11 +58,8 @@ test('downloads video, transcript, and metadata', async () => {
         const folder = report.outputDir;
         assert.equal(path.basename(folder), 'reel-9-sunset-timelapse');
         assert.deepEqual(await fs.readFile(path.join(folder, 'video.mp4')), VIDEO);
-        assert.equal(await fs.readFile(path.join(folder, 'transcript.txt'), 'utf8'), 'hello world\n');
-        assert.deepEqual(JSON.parse(await fs.readFile(path.join(folder, 'segments.json'), 'utf8')), [
-          { start: 0, end: 1.5, text: 'hello' },
-          { start: 1.5, end: 3, text: 'world' },
-        ]);
+        await assert.rejects(fs.access(path.join(folder, 'transcript.txt')));
+        await assert.rejects(fs.access(path.join(folder, 'segments.json')));
         const metadata = JSON.parse(await fs.readFile(path.join(folder, 'metadata.json'), 'utf8'));
         assert.equal(metadata.videoUrl, videoUrl);
         assert.equal(metadata.likesCount, 33);
@@ -72,9 +67,10 @@ test('downloads video, transcript, and metadata', async () => {
         assert.equal(manifest.schemaVersion, 1);
         assert.equal(manifest.runId, 'RUN1');
         assert.equal(manifest.duration, 42.261);
-        assert.equal(report.segments, 2);
+        assert.equal('transcript' in manifest, false);
         await assert.rejects(fs.access(path.join(folder, 'audio.mp4')));
         assert.equal(transport.postCount, 1);
+        assert.deepEqual(transport.requests[0].body, { videoUrls: ['https://www.facebook.com/reel/9/'] });
       });
     });
   });
@@ -121,29 +117,12 @@ test('a second run reuses the folder and skips media', async () => {
   await fs.rm(out, { recursive: true, force: true });
 });
 
-test('a silent video still downloads its media', async () => {
-  const out = await tempDir();
-  await withToken(async () => {
-    await withServer(VIDEO, {}, async (videoUrl) => {
-      await withServer(AUDIO, {}, async (audioUrl) => {
-        const transport = new FakeTransport(responsesFor(makeItem(videoUrl, audioUrl, { text: null })));
-        const { report, exitCode } = await downloadOne('https://www.facebook.com/reel/9/', { outDir: out, transport });
-        assert.equal(exitCode, 0);
-        assert.equal(report.status, 'no_transcript');
-        assert.equal(report.segments, 0);
-        assert.equal(await fs.readFile(path.join(report.outputDir, 'transcript.txt'), 'utf8'), '');
-      });
-    });
-  });
-  await fs.rm(out, { recursive: true, force: true });
-});
-
 test('an actor error writes metadata but no media', async () => {
   const out = await tempDir();
   await withToken(async () => {
     await withServer(VIDEO, {}, async (videoUrl) => {
       await withServer(AUDIO, {}, async (audioUrl) => {
-        const item = makeItem(videoUrl, audioUrl, { text: null, errMsg: 'no audio url found' });
+        const item = makeItem(videoUrl, audioUrl, { errMsg: 'no audio url found' });
         const transport = new FakeTransport(responsesFor(item));
         const { report, exitCode } = await downloadOne('https://www.facebook.com/reel/9/', { outDir: out, transport });
         assert.equal(exitCode, 4);
@@ -157,25 +136,26 @@ test('an actor error writes metadata but no media', async () => {
   await fs.rm(out, { recursive: true, force: true });
 });
 
-test('a missing media URL reports a download failure', async () => {
+test('a missing media URL is an unknown response', async () => {
   const out = await tempDir();
   await withToken(async () => {
     const transport = new FakeTransport(responsesFor(makeItem('', '')));
     const { report, exitCode } = await downloadOne('https://www.facebook.com/reel/9/', { outDir: out, transport });
-    assert.equal(exitCode, DOWNLOAD_FAILED_EXIT);
-    assert.match(report.error, /no media URL/);
+    assert.equal(exitCode, 7);
+    assert.equal(report.status, 'unknown');
+    assert.match(report.error, /no videoUrl or audioUrl/);
   });
   await fs.rm(out, { recursive: true, force: true });
 });
 
-test('an unreachable media URL reports a download failure but keeps the transcript', async () => {
+test('an unreachable media URL reports a download failure', async () => {
   const out = await tempDir();
   await withToken(async () => {
     const transport = new FakeTransport(responsesFor(makeItem('http://127.0.0.1:9/x.mp4', 'http://127.0.0.1:9/x.mp4')));
     const { report, exitCode } = await downloadOne('https://www.facebook.com/reel/9/', { outDir: out, transport });
     assert.equal(exitCode, DOWNLOAD_FAILED_EXIT);
     assert.match(report.error, /download failed/);
-    await fs.access(path.join(report.outputDir, 'transcript.txt'));
+    await fs.access(path.join(report.outputDir, 'metadata.json'));
   });
   await fs.rm(out, { recursive: true, force: true });
 });

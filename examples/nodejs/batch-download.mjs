@@ -10,25 +10,15 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { APPROVED_BUILD_NUMBER, ConfigurationError, validateVideoUrl } from './client.mjs';
+import { estimateCostUsd, formatEstimate } from './cost.mjs';
 import { downloadOne } from './pipeline.mjs';
 import { loadEnvFile } from './download.mjs';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
-const DATASET_ITEM_USD = 0.001;
-const TIER_PRICES_USD_PER_MINUTE = {
-  FREE: 0.0045, BRONZE: 0.0035, SILVER: 0.003, GOLD: 0.002, PLATINUM: 0.002, DIAMOND: 0.002,
-};
 const COUNTER_KEYS = [
-  'success', 'no_transcript', 'actor_error', 'empty', 'unknown',
+  'success', 'actor_error', 'empty', 'unknown',
   'transport_error', 'run_failed', 'creation_unknown', 'download_failed', 'config_error',
 ];
-
-export function billedMinutes(durationSeconds) {
-  if (!Number.isFinite(durationSeconds) || durationSeconds < 0) {
-    throw new ConfigurationError('durationSeconds must be a finite non-negative number');
-  }
-  return Math.max(1, Math.ceil(durationSeconds / 60));
-}
 
 /** Minimal RFC 4180 reader: quotes, escaped quotes, CRLF, and a trailing newline. */
 export function parseCsv(text) {
@@ -75,7 +65,6 @@ export function parseRows(text) {
   const header = table[0].map((name) => name.trim().toLowerCase());
   const urlIndex = header.indexOf('videourl') >= 0 ? header.indexOf('videourl') : header.indexOf('url');
   if (urlIndex < 0) throw new ConfigurationError("CSV must have a 'videoUrl' or 'url' column");
-  const durationIndex = header.indexOf('durationseconds');
   const rows = [];
   for (let index = 1; index < table.length; index += 1) {
     const lineNumber = String(index + 1);
@@ -88,38 +77,14 @@ export function parseRows(text) {
     } catch (error) {
       throw new ConfigurationError(`CSV line ${lineNumber}: ${error.message}`);
     }
-    let duration = null;
-    if (durationIndex >= 0) {
-      const value = (table[index][durationIndex] ?? '').trim();
-      if (value) {
-        duration = Number(value);
-        if (!Number.isFinite(duration)) throw new ConfigurationError(`CSV line ${lineNumber}: durationSeconds must be a number`);
-        if (duration < 0) throw new ConfigurationError(`CSV line ${lineNumber}: durationSeconds must not be negative`);
-      }
-    }
-    rows.push({ rowId: lineNumber, url, canonicalUrl: canonical, urlForm: form, durationSeconds: duration });
+    rows.push({ rowId: lineNumber, url, canonicalUrl: canonical, urlForm: form });
   }
   if (rows.length === 0) throw new ConfigurationError('CSV contains no non-empty URL rows');
   return rows;
 }
 
-export function estimateRows(rows, tier = 'FREE') {
-  const selected = (tier || 'FREE').trim().toUpperCase();
-  if (!(selected in TIER_PRICES_USD_PER_MINUTE)) {
-    throw new ConfigurationError(`tier must be one of ${Object.keys(TIER_PRICES_USD_PER_MINUTE).join(', ')}`);
-  }
-  const minutes = rows.reduce((sum, row) => sum + billedMinutes(row.durationSeconds ?? 0), 0);
-  const datasetItemUsd = DATASET_ITEM_USD * rows.length;
-  const speechToTextUsd = TIER_PRICES_USD_PER_MINUTE[selected] * minutes;
-  return {
-    tier: selected,
-    videos: rows.length,
-    billedMinutes: minutes,
-    datasetItemUsd,
-    speechToTextUsd,
-    totalUsd: datasetItemUsd + speechToTextUsd,
-    lowerBound: rows.some((row) => row.durationSeconds === null),
-  };
+export function estimateRows(rows) {
+  return estimateCostUsd({ videos: rows.length });
 }
 
 export function countResults(results) {
@@ -129,7 +94,7 @@ export function countResults(results) {
     counts[status] += 1;
   }
   counts.processed = results.length;
-  counts.failed = counts.processed - counts.success - counts.no_transcript;
+  counts.failed = counts.processed - counts.success;
   return counts;
 }
 
@@ -143,7 +108,6 @@ export async function main(argv = process.argv.slice(2)) {
       limit: { type: 'string' },
       'max-concurrency': { type: 'string', default: '3' },
       output: { type: 'string' },
-      tier: { type: 'string', default: 'FREE' },
       'no-video': { type: 'boolean', default: false },
       audio: { type: 'boolean', default: false },
       'audio-format': { type: 'string', default: 'raw' },
@@ -172,19 +136,14 @@ export async function main(argv = process.argv.slice(2)) {
       if (!Number.isInteger(limit) || limit < 1) throw new ConfigurationError('--limit must be a positive integer');
       rows = rows.slice(0, limit);
     }
-    estimate = estimateRows(rows, values.tier);
+    estimate = estimateRows(rows);
   } catch (error) {
     process.stderr.write(`Configuration error: ${error.message}\n`);
     return 2;
   }
 
   process.stdout.write(`CSV: ${csvPath}\nRows: ${rows.length}\n`);
-  process.stdout.write(
-    `Estimate: ${estimate.videos} video(s), ${estimate.billedMinutes} billed minute(s), `
-    + `${estimate.tier} tier -> $${estimate.totalUsd.toFixed(4)} estimated `
-    + `(dataset $${estimate.datasetItemUsd.toFixed(4)} + speech $${estimate.speechToTextUsd.toFixed(4)})`
-    + `${estimate.lowerBound ? ' [lower bound: some durations unknown]' : ''}\n`,
-  );
+  process.stdout.write(`Estimate: ${formatEstimate(estimate)}\n`);
   process.stdout.write(`Output: ${path.resolve(values.out)}\n`);
 
   if (!values.execute) {
@@ -237,7 +196,7 @@ export async function main(argv = process.argv.slice(2)) {
   if (existsSync(resultPath)) resultPath = resultPath.replace(/\.json$/, `-${Date.now()}.json`);
   writeFileSync(resultPath, `${JSON.stringify({
     generatedAt: new Date().toISOString(),
-    actorId: values['actor-id'] ?? process.env.APIFY_ACTOR_ID ?? 'apple_yang/facebook-transcript-scraper-api',
+    actorId: values['actor-id'] ?? process.env.APIFY_ACTOR_ID ?? 'apple_yang/facebook-video-audio-downloader',
     build: values.build,
     source: csvPath,
     outputDir: path.resolve(values.out),

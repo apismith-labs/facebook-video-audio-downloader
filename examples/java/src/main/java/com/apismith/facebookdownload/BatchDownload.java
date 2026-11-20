@@ -26,7 +26,7 @@ public final class BatchDownload {
     private BatchDownload() {
     }
 
-    private record Row(int line, String url, Double seconds) {
+    private record Row(int line, String url) {
     }
 
     public static void main(String[] args) {
@@ -72,29 +72,27 @@ public final class BatchDownload {
             System.exit(2);
         }
 
-        String tier = flags.getOrDefault("tier", "FREE").toUpperCase();
-        double estimate = 0;
+        double estimate = Cost.estimate(rows.size());
         List<String[]> canonical = new ArrayList<>();
         for (Row row : rows) {
             try {
-                String[] validated = TranscriptClient.validateVideoUrl(row.url());
+                String[] validated = VideoClient.validateVideoUrl(row.url());
                 canonical.add(validated);
-                estimate += Cost.estimate(1, row.seconds() == null ? 60 : row.seconds(), tier);
-            } catch (TranscriptClient.ConfigurationException error) {
+            } catch (VideoClient.ConfigurationException error) {
                 System.err.println("line " + row.line() + ": " + error.getMessage());
                 System.exit(2);
             }
         }
 
         System.out.println("rows: " + rows.size());
-        System.out.println("tier: " + tier);
-        System.out.println("estimated cost: " + Cost.formatUsd(estimate));
+        System.out.println("estimated cost: " + Cost.formatUsd(estimate)
+                + " (" + Cost.formatUsd(Cost.RESULT_USD) + " per result)");
         if (!"true".equals(flags.get("execute"))) {
             System.out.println("plan only: no token read, no Run created. Re-run with --execute to submit.");
             return;
         }
 
-        Map<String, String> dotEnv = TranscriptClient.readDotEnv(TranscriptClient.findDotEnv());
+        Map<String, String> dotEnv = VideoClient.readDotEnv(VideoClient.findDotEnv());
         String token = dotEnv.getOrDefault("APIFY_TOKEN", System.getenv().getOrDefault("APIFY_TOKEN", ""));
         if (token.isBlank()) {
             System.err.println("APIFY_TOKEN is required with --execute");
@@ -120,7 +118,7 @@ public final class BatchDownload {
         downloadOptions.wantAudio = flags.containsKey("audio");
         downloadOptions.audioFormat = flags.getOrDefault("audio-format", "raw");
         downloadOptions.force = flags.containsKey("force");
-        TranscriptClient.Options sharedRun = new TranscriptClient.Options();
+        VideoClient.Options sharedRun = new VideoClient.Options();
         sharedRun.token = token;
         sharedRun.maxTotalChargeUsd = cap;
         sharedRun.timeoutSeconds = timeout;
@@ -156,7 +154,7 @@ public final class BatchDownload {
             summary.merge(status, 1, (left, right) -> ((Number) left).intValue() + ((Number) right).intValue());
             if (result.get("exitCode") instanceof Number code && code.intValue() != 0) {
                 failed++;
-            } else if (!"success".equals(status) && !"no_transcript".equals(status)) {
+            } else if (!"success".equals(status)) {
                 failed++;
             }
         }
@@ -166,7 +164,6 @@ public final class BatchDownload {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("generatedAt", Instant.now().toString());
         payload.put("csv", csvPath.toString());
-        payload.put("tier", tier);
         payload.put("outputDir", Path.of(downloadOptions.outDir).toAbsolutePath().toString());
         payload.put("estimateUsd", estimate);
         payload.put("summary", summary);
@@ -202,7 +199,7 @@ public final class BatchDownload {
         options.force = template.force;
         options.keepMediaUrls = template.keepMediaUrls;
 
-        TranscriptClient.Options run = new TranscriptClient.Options();
+        VideoClient.Options run = new VideoClient.Options();
         run.token = template.run.token;
         run.actorId = template.run.actorId;
         run.build = template.run.build;
@@ -238,13 +235,10 @@ public final class BatchDownload {
         }
         List<String> header = splitLine(lines.get(0).replace("\uFEFF", ""));
         int urlIndex = -1;
-        int durationIndex = -1;
         for (int index = 0; index < header.size(); index++) {
             String name = header.get(index).trim().toLowerCase();
             if ("videourl".equals(name) || "url".equals(name)) {
                 urlIndex = index;
-            } else if ("durationseconds".equals(name) || "duration".equals(name)) {
-                durationIndex = index;
             }
         }
         if (urlIndex < 0) {
@@ -264,18 +258,7 @@ public final class BatchDownload {
             if (url.isEmpty()) {
                 continue;
             }
-            Double seconds = null;
-            if (durationIndex >= 0 && durationIndex < fields.size() && !fields.get(durationIndex).isBlank()) {
-                try {
-                    double parsed = Double.parseDouble(fields.get(durationIndex).trim());
-                    if (parsed >= 0) {
-                        seconds = parsed;
-                    }
-                } catch (NumberFormatException ignored) {
-                    // An unparsable duration only weakens the estimate.
-                }
-            }
-            rows.add(new Row(index + 1, url, seconds));
+            rows.add(new Row(index + 1, url));
         }
         return rows;
     }

@@ -18,10 +18,9 @@ import java.util.Set;
 public final class Downloader {
 
     public static final int DOWNLOAD_FAILED_EXIT = 11;
-    /** Runs that produced usable media; a missing transcript does not block the download. */
-    private static final Set<String> DOWNLOADABLE = Set.of("success", "no_transcript");
-    private static final Map<String, Integer> TRANSCRIPT_EXITS = Map.of(
-            "actor_error", 4, "empty", 5, "no_transcript", 6, "unknown", 7, "run_failed", 9);
+    private static final Set<String> DOWNLOADABLE = Set.of("success");
+    private static final Map<String, Integer> RESOLVE_EXITS = Map.of(
+            "actor_error", 4, "empty", 5, "unknown", 7, "run_failed", 9);
 
     private Downloader() {
     }
@@ -45,7 +44,7 @@ public final class Downloader {
         public boolean force;
         public boolean keepMediaUrls;
         public String name;
-        public TranscriptClient.Options run = new TranscriptClient.Options();
+        public VideoClient.Options run = new VideoClient.Options();
         public Media.Progress progress;
         public Transcoder transcoder = Media::transcodeAudio;
     }
@@ -66,9 +65,7 @@ public final class Downloader {
         report.put("duration", null);
         report.put("title", null);
         report.put("nickname", null);
-        report.put("segments", 0);
         report.put("assets", new ArrayList<>());
-        report.put("transcript", null);
         report.put("error", null);
         return report;
     }
@@ -78,24 +75,24 @@ public final class Downloader {
         Options settings = options == null ? new Options() : options;
         Map<String, Object> report = emptyReport(url);
 
-        TranscriptClient.Result result;
+        VideoClient.Result result;
         try {
-            result = TranscriptClient.getTranscript(url, settings.run);
-        } catch (TranscriptClient.ConfigurationException error) {
+            result = VideoClient.resolveMedia(url, settings.run);
+        } catch (VideoClient.ConfigurationException error) {
             report.put("status", "config_error");
             report.put("error", error.getMessage());
             return new Outcome(report, 2);
-        } catch (TranscriptClient.CreationUnknownException error) {
+        } catch (VideoClient.CreationUnknownException error) {
             report.put("status", "creation_unknown");
             report.put("error", error.getMessage());
             return new Outcome(report, 10);
-        } catch (TranscriptClient.ProtocolException error) {
+        } catch (VideoClient.ProtocolException error) {
             report.put("status", "unknown");
             report.put("runId", error.runId());
             report.put("datasetId", error.datasetId());
             report.put("error", error.getMessage());
             return new Outcome(report, 7);
-        } catch (TranscriptClient.TransportException error) {
+        } catch (VideoClient.TransportException error) {
             report.put("status", "transport_error");
             report.put("runId", error.runId());
             report.put("datasetId", error.datasetId());
@@ -124,21 +121,11 @@ public final class Downloader {
             if (!DOWNLOADABLE.contains(result.status())) {
                 Layout.writeJson(target.resolve("metadata.json"),
                         Layout.sanitizeItem(item, settings.keepMediaUrls));
-                return new Outcome(report, TRANSCRIPT_EXITS.getOrDefault(result.status(), 7));
+                return new Outcome(report, RESOLVE_EXITS.getOrDefault(result.status(), 7));
             }
 
-            List<Map<String, Object>> segments = Layout.transcriptSegments(result.segments());
-            String transcriptText = result.text() == null ? "" : result.text().trim();
-            int transcriptBytes = Layout.writeText(target.resolve("transcript.txt"),
-                    transcriptText.isEmpty() ? "" : transcriptText + "\n");
-            Layout.writeJson(target.resolve("segments.json"), segments);
             Layout.writeJson(target.resolve("metadata.json"),
                     Layout.sanitizeItem(item, settings.keepMediaUrls));
-            report.put("segments", segments.size());
-            Map<String, Object> transcript = new LinkedHashMap<>();
-            transcript.put("bytes", transcriptBytes);
-            transcript.put("segments", segments.size());
-            report.put("transcript", transcript);
 
             List<Map<String, Object>> mediaSources = new ArrayList<>();
             List<Map<String, Object>> assets = new ArrayList<>();
@@ -202,8 +189,7 @@ public final class Downloader {
             }
 
             try {
-                Map<String, Object> manifest = Layout.buildManifest(result, assets, transcriptBytes,
-                        segments.size(), mediaSources);
+                Map<String, Object> manifest = Layout.buildManifest(result, assets, mediaSources);
                 Layout.writeJson(target.resolve("manifest.json"), manifest);
             } catch (IOException error) {
                 report.put("error", "could not write manifest: " + error.getMessage());

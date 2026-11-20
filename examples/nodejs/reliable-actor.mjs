@@ -1,5 +1,5 @@
 /**
- * Staged Apify REST runner for the Facebook Transcript Actor.
+ * Staged Apify REST runner for the Facebook Video & Audio Downloader Actor.
  *
  * Importing this module performs no I/O. The three stages — create, poll, read Dataset — have
  * different retry rules on purpose. Run creation is never retried.
@@ -14,7 +14,6 @@ export const STATUSES = [
   'success',
   'actor_error',
   'empty',
-  'no_transcript',
   'unknown',
   'transport_error',
   'run_failed',
@@ -25,20 +24,19 @@ export const EXIT_CODES = {
   success: 0,
   actor_error: 4,
   empty: 5,
-  no_transcript: 6,
   unknown: 7,
   transport_error: 8,
   run_failed: 9,
   creation_unknown: 10,
 };
 
-// Pinned build: see docs/audit/actor_audit_20261028.md.
-export const APPROVED_BUILD_NUMBER = '0.0.18';
-export const APPROVED_BUILD_ID = 'fZIlpYENof2jYqIJc';
-export const DEFAULT_ACTOR_ID = 'apple_yang/facebook-transcript-scraper-api';
+// Pinned build: see docs/audit/actor_audit_20261120.md.
+export const APPROVED_BUILD_NUMBER = '0.0.17';
+export const APPROVED_BUILD_ID = 'WGTQiWxajo00DTQ5X';
+export const DEFAULT_ACTOR_ID = 'apple_yang/facebook-video-audio-downloader';
 
 export function buildRunInput(videoUrl) {
-  return { videoUrl };
+  return { videoUrls: [videoUrl] };
 }
 
 export function validateBuild(value, { required = false } = {}) {
@@ -252,32 +250,16 @@ export function classifyItems(items) {
     .filter((item) => item.errMsg !== undefined && item.errMsg !== null && String(item.errMsg).trim())
     .map((item) => String(item.errMsg).trim());
   if (errors.length) return ['actor_error', redactText(errors.join('; ')).slice(0, 500)];
-  if (items.some((item) => typeof item.text === 'string' && item.text.trim())) return ['success', ''];
-  if (items.some((item) => Object.prototype.hasOwnProperty.call(item, 'text') && item.text === null)) {
-    return ['no_transcript', 'Transcript text is null'];
+  for (const item of items) {
+    for (const field of ['videoUrl', 'audioUrl']) {
+      const value = item[field];
+      if (typeof value === 'string' && value.trim()) return ['success', ''];
+      if (value !== undefined && value !== null && typeof value !== 'string') {
+        return ['unknown', `${field} has an unsupported type`];
+      }
+    }
   }
-  if (items.some((item) => !Object.prototype.hasOwnProperty.call(item, 'text'))) {
-    return ['no_transcript', 'Transcript text is absent'];
-  }
-  if (items.some((item) => typeof item.text === 'string' && !item.text.trim())) {
-    return ['no_transcript', 'Transcript text is empty'];
-  }
-  return ['unknown', 'Transcript text has an unsupported type'];
-}
-
-export function normalizeSegments(value) {
-  if (!Array.isArray(value)) return [];
-  const result = [];
-  for (const entry of value) {
-    if (entry === null || typeof entry !== 'object' || Array.isArray(entry)) continue;
-    const { start, end, text } = entry;
-    if (typeof start !== 'number' || typeof end !== 'number') continue;
-    if (!Number.isFinite(start) || !Number.isFinite(end)) continue;
-    if (start < 0 || end < start) continue;
-    if (typeof text !== 'string') continue;
-    result.push({ start, end, text });
-  }
-  return result;
+  return ['unknown', 'Dataset item carries no videoUrl or audioUrl'];
 }
 
 export const defaultSleep = (seconds) => new Promise((resolve) => setTimeout(resolve, seconds * 1000));

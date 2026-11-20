@@ -14,20 +14,18 @@ import (
 
 // Report is the machine-readable outcome of one download, shared by every CLI.
 type Report struct {
-	Status       string           `json:"status"`
-	SourceURL    string           `json:"sourceUrl"`
-	CanonicalURL *string          `json:"canonicalUrl"`
-	URLForm      *string          `json:"urlForm"`
-	RunID        *string          `json:"runId"`
-	DatasetID    *string          `json:"datasetId"`
-	OutputDir    *string          `json:"outputDir"`
-	Duration     *float64         `json:"duration"`
-	Title        *string          `json:"title"`
-	Nickname     *string          `json:"nickname"`
-	Segments     int              `json:"segments"`
-	Assets       []MediaAsset     `json:"assets"`
-	Transcript   *TranscriptStats `json:"transcript"`
-	Error        *string          `json:"error"`
+	Status       string       `json:"status"`
+	SourceURL    string       `json:"sourceUrl"`
+	CanonicalURL *string      `json:"canonicalUrl"`
+	URLForm      *string      `json:"urlForm"`
+	RunID        *string      `json:"runId"`
+	DatasetID    *string      `json:"datasetId"`
+	OutputDir    *string      `json:"outputDir"`
+	Duration     *float64     `json:"duration"`
+	Title        *string      `json:"title"`
+	Nickname     *string      `json:"nickname"`
+	Assets       []MediaAsset `json:"assets"`
+	Error        *string      `json:"error"`
 }
 
 // DownloadOptions controls one download. Run carries the Actor Run settings.
@@ -45,8 +43,8 @@ type DownloadOptions struct {
 	Sleep         func(time.Duration)
 }
 
-var downloadableStatuses = map[string]bool{"success": true, "no_transcript": true}
-var transcriptExitCodes = map[string]int{"actor_error": 4, "empty": 5, "no_transcript": 6, "unknown": 7, "run_failed": 9}
+var downloadableStatuses = map[string]bool{"success": true}
+var resolveExitCodes = map[string]int{"actor_error": 4, "empty": 5, "unknown": 7, "run_failed": 9}
 
 func pointer[T any](value T) *T { return &value }
 
@@ -60,7 +58,7 @@ func DownloadOne(ctx context.Context, rawURL string, options DownloadOptions) (R
 		options.AudioFormat = "raw"
 	}
 
-	result, err := GetTranscript(ctx, rawURL, options.Run)
+	result, err := ResolveMedia(ctx, rawURL, options.Run)
 	if err != nil {
 		var configErr *ConfigurationError
 		if errors.As(err, &configErr) {
@@ -137,36 +135,17 @@ func DownloadOne(ctx context.Context, rawURL string, options DownloadOptions) (R
 			SanitizeItem(item, options.KeepMediaURLs)); writeErr != nil {
 			report.Error = pointer("could not write metadata: " + writeErr.Error())
 		}
-		code, ok := transcriptExitCodes[result.Status]
+		code, ok := resolveExitCodes[result.Status]
 		if !ok {
 			code = 7
 		}
 		return report, code
 	}
 
-	segments := TranscriptSegments(result.Segments)
-	transcriptText := ""
-	if result.HasText {
-		transcriptText = result.Text
-	}
-	if transcriptText != "" {
-		transcriptText += "\n"
-	}
-	transcriptBytes, err := WriteText(filepath.Join(target, transcriptFile), transcriptText)
-	if err != nil {
-		report.Error = pointer("could not write transcript: " + err.Error())
-		return report, DownloadFailedExitCode
-	}
-	if _, err := WriteJSON(filepath.Join(target, segmentsFile), segments); err != nil {
-		report.Error = pointer("could not write segments: " + err.Error())
-		return report, DownloadFailedExitCode
-	}
 	if _, err := WriteJSON(filepath.Join(target, metadataFile), SanitizeItem(item, options.KeepMediaURLs)); err != nil {
 		report.Error = pointer("could not write metadata: " + err.Error())
 		return report, DownloadFailedExitCode
 	}
-	report.Segments = len(segments)
-	report.Transcript = &TranscriptStats{Bytes: transcriptBytes, Segments: len(segments)}
 
 	type job struct {
 		kind        string
@@ -244,7 +223,7 @@ func DownloadOne(ctx context.Context, rawURL string, options DownloadOptions) (R
 		}
 	}
 
-	manifest := NewManifest(result, assets, transcriptBytes, len(segments), sources)
+	manifest := NewManifest(result, assets, sources)
 	if _, err := WriteJSON(filepath.Join(target, manifestFile), manifest); err != nil {
 		report.Error = pointer("could not write manifest: " + err.Error())
 		return report, DownloadFailedExitCode

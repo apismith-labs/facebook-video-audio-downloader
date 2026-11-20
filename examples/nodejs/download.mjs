@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
- * Download the video, audio, transcript, and metadata for one public Facebook video URL.
+ * Download the video, audio, and metadata for one public Facebook video URL.
  *
- * One invocation may create one billable Actor Run ($0.0055 for a video under one minute).
+ * One invocation may create one billable Actor Run ($0.005).
  * The Run resolves the page into signed videoUrl/audioUrl links; those are downloaded at once
  * because the signature expires.
  *
@@ -158,7 +158,7 @@ export async function main(argv = process.argv.slice(2)) {
   } else if (!values.quiet) {
     if (exitCode === 0) {
       const files = report.assets.map((asset) => path.basename(asset.path)).join(', ') || 'no media';
-      process.stdout.write(`${report.status}: ${report.outputDir}  segments=${report.segments}  ${files}\n`);
+      process.stdout.write(`${report.status}: ${report.outputDir}  ${files}\n`);
     } else {
       process.stderr.write(`${report.status}: ${report.error ?? 'no output'}\n`);
     }

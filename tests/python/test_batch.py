@@ -36,6 +36,7 @@ class CsvTests(unittest.TestCase):
         rows = batch_download.parse_rows(path)
         self.assertEqual([row.row_id for row in rows], ["2", "4"])
         self.assertEqual([row.url_form for row in rows], ["reel", "watch"])
+        self.assertFalse(hasattr(rows[0], "duration_seconds"))
 
     def test_accepts_url_column_case_insensitively(self):
         path = self.write("URL\nhttps://www.facebook.com/reel/1/\n")
@@ -52,11 +53,6 @@ class CsvTests(unittest.TestCase):
             batch_download.parse_rows(path)
         self.assertIn("line 2", str(caught.exception))
 
-    def test_negative_duration_is_rejected(self):
-        path = self.write("videoUrl,durationSeconds\nhttps://www.facebook.com/reel/1/,-3\n")
-        with self.assertRaises(ConfigurationError):
-            batch_download.parse_rows(path)
-
     def test_empty_file_is_rejected(self):
         path = self.write("videoUrl\n\n")
         with self.assertRaises(ConfigurationError):
@@ -64,43 +60,36 @@ class CsvTests(unittest.TestCase):
 
 
 class EstimateTests(unittest.TestCase):
-    def rows(self, *durations):
+    def rows(self, count):
         return [
             batch_download.CsvRow(str(index + 2), "https://www.facebook.com/reel/1/",
-                                  "https://www.facebook.com/reel/1/", "reel", duration)
-            for index, duration in enumerate(durations)
+                                  "https://www.facebook.com/reel/1/", "reel")
+            for index in range(count)
         ]
 
-    def test_under_one_minute_is_billed_as_one_minute(self):
-        estimate = batch_download.estimate_rows(self.rows(42.261), "FREE")
-        self.assertEqual(estimate["billedMinutes"], 1)
-        self.assertAlmostEqual(estimate["totalUsd"], 0.0055, places=6)
+    def test_each_video_costs_one_result(self):
+        estimate = batch_download.estimate_rows(self.rows(1))
+        self.assertAlmostEqual(estimate["totalUsd"], 0.005, places=6)
 
-    def test_unknown_duration_is_a_lower_bound_at_one_minute(self):
-        estimate = batch_download.estimate_rows(self.rows(None), "FREE")
-        self.assertTrue(estimate["lowerBound"])
-        self.assertAlmostEqual(estimate["totalUsd"], 0.0055, places=6)
-
-    def test_invalid_tier_is_rejected(self):
-        with self.assertRaises(ConfigurationError):
-            batch_download.estimate_rows(self.rows(10), "TITANIUM")
+    def test_total_scales_with_the_number_of_rows(self):
+        estimate = batch_download.estimate_rows(self.rows(3))
+        self.assertAlmostEqual(estimate["totalUsd"], 0.015, places=6)
 
 
 class CountTests(unittest.TestCase):
     def test_counts_include_download_failures(self):
         counts = batch_download.count_results([
             {"status": "success"},
-            {"status": "no_transcript"},
+            {"status": "actor_error"},
             {"status": "download_failed"},
             {"status": "something-new"},
         ])
         self.assertEqual(counts["success"], 1)
-        self.assertEqual(counts["no_transcript"], 1)
+        self.assertEqual(counts["actor_error"], 1)
         self.assertEqual(counts["download_failed"], 1)
         self.assertEqual(counts["unknown"], 1)
         self.assertEqual(counts["processed"], 4)
-        # A silent video still downloaded successfully, so it is not a failure.
-        self.assertEqual(counts["failed"], 2)
+        self.assertEqual(counts["failed"], 3)
 
 
 if __name__ == "__main__":

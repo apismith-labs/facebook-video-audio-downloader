@@ -6,14 +6,14 @@ Standard library only. Python 3.10+.
 
 | File | Role |
 | --- | --- |
-| `client.py` | Actor API: URL validation, `get_transcript()`, pinned Build verification |
+| `client.py` | Actor API: URL validation, `resolve_media()`, pinned Build verification |
 | `reliable_actor.py` | Three-stage runner: create once, poll, read the Dataset |
 | `media.py` | Resumable download, SHA-256, expiry-safe redaction, ffmpeg remux |
 | `layout.py` | Folder naming, sidecar files, manifest |
 | `pipeline.py` | One-video pipeline shared by the CLI and the batch runner |
 | `download.py` | Single-URL CLI |
 | `batch_download.py` | CSV batch CLI (plan-only by default) |
-| `cost.py` | Two-event cost model |
+| `cost.py` | Flat per-result cost model |
 
 ## Single URL
 
@@ -58,6 +58,6 @@ cd ../..
 APIFY_SKIP_DOTENV=1 python3 -m unittest discover -s tests/python -v
 ```
 
-61 tests: media resumption against a local HTTP server, layout rules, the full pipeline against a
+57 tests: media resumption against a local HTTP server, layout rules, the full pipeline against a
 fake Actor, CSV validation, `.env` discovery, and cost arithmetic. None of them touch the network or
 create a Run.

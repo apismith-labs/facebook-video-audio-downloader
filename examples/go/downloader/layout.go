@@ -17,10 +17,8 @@ import (
 )
 
 const (
-	transcriptFile = "transcript.txt"
-	segmentsFile   = "segments.json"
-	metadataFile   = "metadata.json"
-	manifestFile   = "manifest.json"
+	metadataFile = "metadata.json"
+	manifestFile = "manifest.json"
 )
 
 var (
@@ -163,21 +161,6 @@ func SanitizeItem(item map[string]any, keepMediaURLs bool) map[string]any {
 	return cleaned
 }
 
-// TranscriptSegments keeps only well-formed segments.
-func TranscriptSegments(segments []map[string]any) []map[string]any {
-	result := []map[string]any{}
-	for _, entry := range segments {
-		start, startOK := numberValue(entry["start"])
-		end, endOK := numberValue(entry["end"])
-		text, textOK := entry["text"].(string)
-		if !startOK || !endOK || !textOK || start < 0 || end < start {
-			continue
-		}
-		result = append(result, map[string]any{"start": start, "end": end, "text": text})
-	}
-	return result
-}
-
 func numberValue(value any) (float64, bool) {
 	switch typed := value.(type) {
 	case float64:
@@ -222,27 +205,20 @@ func WriteJSON(target string, payload any) (int, error) {
 
 // Manifest is the machine-readable record written next to the media.
 type Manifest struct {
-	SchemaVersion int             `json:"schemaVersion"`
-	SourceURL     string          `json:"sourceUrl"`
-	CanonicalURL  string          `json:"canonicalUrl"`
-	URLForm       string          `json:"urlForm"`
-	Status        string          `json:"status"`
-	RunID         string          `json:"runId"`
-	DatasetID     string          `json:"datasetId"`
-	Title         string          `json:"title"`
-	Nickname      string          `json:"nickname"`
-	Duration      *float64        `json:"duration"`
-	DownloadedAt  string          `json:"downloadedAt"`
-	Assets        []MediaAsset    `json:"assets"`
-	Transcript    TranscriptStats `json:"transcript"`
-	MediaSources  []MediaSource   `json:"mediaSources"`
-	Notes         []string        `json:"notes"`
-}
-
-// TranscriptStats records what the sidecar transcript files contain.
-type TranscriptStats struct {
-	Bytes    int `json:"bytes"`
-	Segments int `json:"segments"`
+	SchemaVersion int           `json:"schemaVersion"`
+	SourceURL     string        `json:"sourceUrl"`
+	CanonicalURL  string        `json:"canonicalUrl"`
+	URLForm       string        `json:"urlForm"`
+	Status        string        `json:"status"`
+	RunID         string        `json:"runId"`
+	DatasetID     string        `json:"datasetId"`
+	Title         string        `json:"title"`
+	Nickname      string        `json:"nickname"`
+	Duration      *float64      `json:"duration"`
+	DownloadedAt  string        `json:"downloadedAt"`
+	Assets        []MediaAsset  `json:"assets"`
+	MediaSources  []MediaSource `json:"mediaSources"`
+	Notes         []string      `json:"notes"`
 }
 
 // MediaSource records where a file came from, without the signature.
@@ -252,8 +228,7 @@ type MediaSource struct {
 }
 
 // NewManifest assembles a manifest; no signed URL is ever included.
-func NewManifest(result Result, assets []MediaAsset, transcriptBytes, segmentCount int,
-	sources []MediaSource) Manifest {
+func NewManifest(result Result, assets []MediaAsset, sources []MediaSource) Manifest {
 	var duration *float64
 	if result.HasDuration {
 		value := result.Duration
@@ -272,7 +247,6 @@ func NewManifest(result Result, assets []MediaAsset, transcriptBytes, segmentCou
 		Duration:      duration,
 		DownloadedAt:  time.Now().UTC().Format(time.RFC3339),
 		Assets:        assets,
-		Transcript:    TranscriptStats{Bytes: transcriptBytes, Segments: segmentCount},
 		MediaSources:  sources,
 		Notes: []string{
 			"Media links returned by the Actor are signed and short-lived; they are not stored here.",

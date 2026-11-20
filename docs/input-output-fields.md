@@ -4,11 +4,12 @@ Two schemas matter: what the Actor accepts and returns, and what this kit writes
 
 ## Actor input
 
-Exactly one field. There is no `bulkUrls`, no profile mode, no cookie or session field.
+One field. The Actor accepts an array, but this kit always sends a single-element array — one URL
+per Run. There is no profile mode, cookie, or session field.
 
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
-| `videoUrl` | string | yes | A public Facebook video URL, `https://` only |
+| `videoUrls` | string[] | yes | Public Facebook video URLs, `https://` only; the kit sends `[canonical]` |
 
 The canonical form is submitted: tracking parameters are dropped, and only `watch` and `video.php`
 keep a single numeric `?v=`.
@@ -30,30 +31,32 @@ Rejected: `http://`, non-Facebook hosts, fragments, user-info, non-default ports
 
 ## Actor Dataset fields
 
-All 17 are declared required.
+All 15 are declared required.
 
-| Field | Type | Meaning | Live observation |
-| --- | --- | --- | --- |
-| `url` | string | The submitted URL, echoed verbatim | unchanged |
-| `title` | string | Video title | populated |
-| `videoUrl` | string | Signed MP4 video link on `fbcdn.net` | 200, `video/mp4` |
-| `audioUrl` | string | Signed **audio-only MP4** (AAC) link | 200, `video/mp4` |
-| `createTime` | integer | Upload time, Unix seconds | `1791609487` |
-| `playCount` | integer | Plays | populated |
-| `commentCount` | integer | Comments | populated |
-| `reactionCount` | integer | Reactions | populated |
-| `likesCount` | integer | Likes | `33` |
-| `shareCount` | integer | Shares | `2` |
-| `duration` | number | Length in **seconds** | `42.261` |
-| `nickname` | string | Uploader display name | populated |
-| `avatarUri` | string | Uploader avatar (signed JPG) | populated |
-| `text` | string | Full transcript, may be empty | 13 segments' worth |
-| `segments` | array | `{start, end, text}` in seconds | `start <= end` |
-| `errMsg` | string | Failure message, empty on success | `no audio url found` when it fails |
-| `timestamp` | string | Item creation time (ISO 8601) | populated |
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `url` | string | The submitted URL, echoed verbatim |
+| `title` | string | Video title |
+| `videoUrl` | string | Signed MP4 video link on `fbcdn.net` |
+| `audioUrl` | string | Signed **audio-only MP4** (AAC) link |
+| `createTime` | integer | Upload time, Unix seconds |
+| `playCount` | integer | Plays |
+| `commentCount` | integer | Comments |
+| `reactionCount` | integer | Reactions |
+| `likesCount` | integer | Likes |
+| `shareCount` | integer | Shares |
+| `duration` | number | Length in **seconds** |
+| `nickname` | string | Uploader display name |
+| `avatarUri` | string | Uploader avatar (signed JPG) |
+| `errMsg` | string | Failure message, empty on success |
+| `timestamp` | string | Item creation time (ISO 8601) |
 
-Precedence: an empty Dataset is `empty`; a non-empty `errMsg` is `actor_error` even when `text` is
-also present; otherwise non-empty `text` is `success`; missing or empty `text` is `no_transcript`.
+The field list and types come from the Build 0.0.17 dataset schema. No live item has been observed
+for this Build; the media-URL behaviour described below is inherited from the sibling transcript
+Actor and has not been re-verified.
+
+Precedence: an empty Dataset is `empty`; a non-empty `errMsg` is `actor_error`; otherwise an item
+with a non-empty `videoUrl` or `audioUrl` is `success`; an item with neither is `unknown`.
 
 ## Files this kit writes
 
@@ -61,8 +64,6 @@ also present; otherwise non-empty `text` is `success`; missing or empty `text` i
 | --- | --- | --- |
 | `video.mp4` | when `wantVideo` | Bytes as served by the CDN, no re-mux |
 | `audio.mp4` / `.m4a` / `.mp3` | when `wantAudio` | Audio-only track, container per `--audio-format` |
-| `transcript.txt` | on a downloadable status | `text` with a trailing newline; empty file when silent |
-| `segments.json` | on a downloadable status | `[{ "start": 0.0, "end": 1.68, "text": "…" }]` |
 | `metadata.json` | always | The Actor item, signed URLs reduced to `scheme://host/path` |
 | `manifest.json` | after the media step | Provenance, sizes, SHA-256, timing |
 
@@ -74,30 +75,17 @@ also present; otherwise non-empty `text` is `success`; missing or empty `text` i
 | `sourceUrl` | string | URL as supplied by the user |
 | `canonicalUrl` | string | URL as submitted to the Actor |
 | `urlForm` | string | `watch`, `page_video`, `reel`, `share`, `short_link`, … |
-| `status` | string | Final status (`success`, `no_transcript`, …) |
+| `status` | string | Final status (`success`, `actor_error`, …) |
 | `runId` / `datasetId` | string | Apify identifiers for reconciliation |
 | `title` / `nickname` | string | From the item |
 | `duration` | number \| null | Seconds |
 | `downloadedAt` | string | ISO 8601 UTC |
 | `assets` | array | `{kind, path, bytes, sha256, contentType, sourceHost, skipped}` |
-| `transcript` | object | `{bytes, segments}` |
 | `mediaSources` | array | `{kind, url}` with the query string removed |
 | `notes` | array | Reminders about expiry and idempotency |
 
 `assets[].skipped` is `true` when the file already existed and was reused, which is how a re-run
 proves it did not re-download anything.
-
-### `segments.json`
-
-```json
-[
-  { "start": 0.0, "end": 1.68, "text": "Hello everyone." },
-  { "start": 1.68, "end": 4.12, "text": "Today we are testing." }
-]
-```
-
-Segments with a non-numeric bound, a negative start, or `end < start` are dropped rather than
-written.
 
 ## Report printed by `--json`
 
@@ -108,7 +96,5 @@ written.
 | `runId` / `datasetId` | string \| null | |
 | `outputDir` | string \| null | Absolute or relative to the working directory |
 | `duration` / `title` / `nickname` | number/string \| null | `null`, never `""`, when absent |
-| `segments` | integer | Count of usable segments |
 | `assets` | array | Same shape as in the manifest |
-| `transcript` | object \| null | `{bytes, segments}` |
 | `error` | string \| null | Redacted |

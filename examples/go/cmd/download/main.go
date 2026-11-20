@@ -1,8 +1,7 @@
-// Command download fetches the video, audio, transcript, and metadata for one Facebook video URL.
+// Command download fetches the video, audio, and metadata for one Facebook video URL.
 //
-// One invocation may create one billable Actor Run ($0.0055 for a video under one minute). The Run
-// resolves the page into signed videoUrl/audioUrl links; those are downloaded immediately because
-// the signature expires.
+// One invocation may create one billable Actor Run ($0.005). The Run resolves the page into signed
+// videoUrl/audioUrl links; those are downloaded immediately because the signature expires.
 //
 // Exit codes: 0 downloaded, 2 bad configuration, 4 Actor item error, 5 empty Dataset, 7 unknown,
 // 8 transport failure, 9 Run failed, 10 creation unknown, 11 media download failed.
@@ -138,7 +137,7 @@ func main() {
 			if len(names) == 0 {
 				names = []string{"no media"}
 			}
-			fmt.Printf("%s: %s  segments=%d  %s\n", report.Status, *report.OutputDir, report.Segments, strings.Join(names, ", "))
+			fmt.Printf("%s: %s  %s\n", report.Status, *report.OutputDir, strings.Join(names, ", "))
 		} else {
 			detail := "no output"
 			if report.Error != nil {

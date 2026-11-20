@@ -26,7 +26,6 @@ public final class DownloadTests {
 
     public static void main(String[] args) throws Exception {
         layoutTests();
-        segmentTests();
         mediaTests();
         pipelineTests();
         System.out.println(passed + " assertions passed");
@@ -59,24 +58,13 @@ public final class DownloadTests {
 
         Map<String, Object> item = new LinkedHashMap<>();
         item.put("videoUrl", "https://scontent.xx.fbcdn.net/v/a.mp4?oh=1&oe=2&sig=3");
-        item.put("text", "hello");
+        item.put("likesCount", 33);
         Map<String, Object> cleaned = Layout.sanitizeItem(item, false);
         check("https://scontent.xx.fbcdn.net/v/a.mp4".equals(cleaned.get("videoUrl")), "signed query stripped");
-        check("hello".equals(cleaned.get("text")), "unrelated fields survive");
+        check(Integer.valueOf(33).equals(cleaned.get("likesCount")), "unrelated fields survive");
         check(String.valueOf(item.get("videoUrl")).contains("sig=3"), "source item not mutated");
         check(String.valueOf(Layout.sanitizeItem(item, true).get("videoUrl")).contains("sig=3"),
                 "opt-in keeps the URL");
-    }
-
-    private static void segmentTests() {
-        List<Map<String, Object>> raw = new ArrayList<>();
-        raw.add(Map.of("start", 0.0, "end", 1.5, "text", "a"));
-        raw.add(Map.of("start", 2.0, "end", 1.0, "text", "reversed"));
-        raw.add(Map.of("start", "0", "end", 1.0, "text", "string start"));
-        raw.add(Map.of("start", 1.0, "end", 2.0, "text", 5));
-        List<Map<String, Object>> kept = Layout.transcriptSegments(raw);
-        check(kept.size() == 1, "only well-formed segments survive, got " + kept.size());
-        check("a".equals(kept.get(0).get("text")), "kept segment text");
     }
 
     private static void mediaTests() throws Exception {
@@ -130,8 +118,6 @@ public final class DownloadTests {
             item.put("audioUrl", mediaUrl);
             item.put("duration", 43.5);
             item.put("nickname", "Dr. Shu");
-            item.put("text", "Hello, Dr.");
-            item.put("segments", List.of(Map.of("start", 0.0, "end", 1.5, "text", "Hello, Dr.")));
 
             Downloader.Options options = new Downloader.Options();
             options.outDir = out.toString();
@@ -145,7 +131,8 @@ public final class DownloadTests {
                     "folder name, got " + folder.getFileName());
             check(Files.isRegularFile(folder.resolve("video.mp4")), "video written");
             check(Files.isRegularFile(folder.resolve("manifest.json")), "manifest written");
-            check(Files.readString(folder.resolve("transcript.txt")).equals("Hello, Dr.\n"), "transcript text");
+            check(!Files.exists(folder.resolve("transcript.txt")), "transcript must not be written");
+            check(!Files.exists(folder.resolve("segments.json")), "segments must not be written");
             check(!Files.exists(folder.resolve("audio.mp4")), "audio skipped by default");
             Map<String, Object> metadata = Json.asObject(Json.parse(
                     Files.readString(folder.resolve("metadata.json"))));
@@ -156,20 +143,8 @@ public final class DownloadTests {
                     "manifest schema version");
             check("run-1".equals(manifest.get("runId")), "manifest run id");
 
-            Map<String, Object> silent = new LinkedHashMap<>(item);
-            silent.put("text", null);
-            silent.put("segments", List.of());
-            Downloader.Options silentOptions = new Downloader.Options();
-            silentOptions.outDir = out.toString();
-            silentOptions.run = runOptions(fakeTransport(List.of(silent)));
-            Downloader.Outcome silentOutcome = Downloader.downloadOne(
-                    "https://www.facebook.com/watch/?v=1115932820735409", silentOptions);
-            check(silentOutcome.exitCode() == 0, "silent video still downloads");
-            check("no_transcript".equals(silentOutcome.report().get("status")), "silent status");
-
             Map<String, Object> failing = new LinkedHashMap<>(item);
             failing.put("errMsg", "no audio url found");
-            failing.put("text", null);
             Downloader.Options failingOptions = new Downloader.Options();
             failingOptions.outDir = out.toString();
             failingOptions.run = runOptions(fakeTransport(List.of(failing)));
@@ -251,8 +226,8 @@ public final class DownloadTests {
         return kinds;
     }
 
-    private static TranscriptClient.Options runOptions(ReliableActor.Transport transport) {
-        TranscriptClient.Options options = new TranscriptClient.Options();
+    private static VideoClient.Options runOptions(ReliableActor.Transport transport) {
+        VideoClient.Options options = new VideoClient.Options();
         options.token = "offline-test-token";
         options.transport = transport;
         options.timeoutSeconds = 10;

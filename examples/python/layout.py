@@ -6,8 +6,6 @@ or inspected by the Node, Go, or Java examples::
     <out>/<folder>/
         video.mp4          requested with --video (default on)
         audio.mp4          requested with --audio; audio-only MP4, or .m4a/.mp3 after a remux
-        transcript.txt     plain text, empty when the video has no speech
-        segments.json      [{start, end, text}, ...] in seconds
         metadata.json      Actor item with signed URLs reduced to scheme://host/path
         manifest.json      what was written, when, from which Run, with sizes and SHA-256
 """
@@ -119,25 +117,6 @@ def sanitize_item(item: dict[str, Any], *, keep_media_urls: bool = False) -> dic
     return cleaned
 
 
-def transcript_segments(segments: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Keep only well-formed segments; timestamps are seconds relative to the video."""
-    result = []
-    for entry in segments or []:
-        if not isinstance(entry, dict):
-            continue
-        start, end, text = entry.get("start"), entry.get("end"), entry.get("text")
-        if isinstance(start, bool) or isinstance(end, bool):
-            continue
-        if not isinstance(start, (int, float)) or not isinstance(end, (int, float)):
-            continue
-        if not isinstance(text, str):
-            continue
-        if start < 0 or end < start:
-            continue
-        result.append({"start": float(start), "end": float(end), "text": text})
-    return result
-
-
 def write_text(path: str | Path, text: str) -> int:
     """Write UTF-8 text atomically (temp file + replace) and return the byte count."""
     path = Path(path)
@@ -163,8 +142,6 @@ def build_manifest(
     url_form: str,
     result: Any,
     assets: list[dict[str, Any]],
-    transcript_bytes: int | None,
-    segment_count: int,
 ) -> dict[str, Any]:
     """Assemble ``manifest.json``. No signed URL is ever included here."""
     return {
@@ -180,10 +157,6 @@ def build_manifest(
         "duration": getattr(result, "duration", None),
         "downloadedAt": utc_now(),
         "assets": assets,
-        "transcript": {
-            "bytes": transcript_bytes,
-            "segments": segment_count,
-        },
         "notes": [
             "Media links returned by the Actor are signed and short-lived; they are not stored here.",
             "Re-running the same URL reuses this folder and skips files whose size still matches.",
@@ -198,7 +171,6 @@ __all__ = [
     "folder_name",
     "sanitize_item",
     "slugify",
-    "transcript_segments",
     "utc_now",
     "video_identity",
     "write_json",

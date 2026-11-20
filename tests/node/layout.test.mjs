@@ -9,7 +9,6 @@ import {
   folderName,
   sanitizeItem,
   slugify,
-  transcriptSegments,
   videoIdentity,
   writeJson,
   writeText,
@@ -63,29 +62,16 @@ test('signed URL queries are stripped', () => {
   const cleaned = sanitizeItem({
     videoUrl: 'https://scontent.xx.fbcdn.net/v/a.mp4?oh=1&oe=2&sig=3',
     audioUrl: 'https://scontent.xx.fbcdn.net/v/b.mp4?oh=1',
-    text: 'hello',
+    likesCount: 33,
   });
   assert.equal(cleaned.videoUrl, 'https://scontent.xx.fbcdn.net/v/a.mp4');
   assert.equal(cleaned.audioUrl, 'https://scontent.xx.fbcdn.net/v/b.mp4');
-  assert.equal(cleaned.text, 'hello');
+  assert.equal(cleaned.likesCount, 33);
 });
 
 test('opting in keeps the signed URLs', () => {
   const cleaned = sanitizeItem({ videoUrl: 'https://x/y.mp4?sig=3' }, { keepMediaUrls: true });
   assert.equal(cleaned.videoUrl, 'https://x/y.mp4?sig=3');
-});
-
-test('invalid segments are dropped', () => {
-  assert.deepEqual(
-    transcriptSegments([
-      { start: 0, end: 1.5, text: 'a' },
-      { start: 2, end: 1, text: 'reversed' },
-      { start: '0', end: 1, text: 'string' },
-      { start: 1, end: 2, text: 5 },
-      'nope',
-    ]),
-    [{ start: 0, end: 1.5, text: 'a' }],
-  );
 });
 
 test('text is written atomically and measured in bytes', async () => {

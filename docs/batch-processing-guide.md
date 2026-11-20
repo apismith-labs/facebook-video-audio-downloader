@@ -5,13 +5,13 @@ One CSV row becomes one Actor Run, one media folder, and one line in the result 
 ## CSV format
 
 ```csv
-videoUrl,durationSeconds
-https://www.facebook.com/watch/?v=1131784255863745,42.261
-https://www.facebook.com/reel/1612151150942907,
+videoUrl
+https://www.facebook.com/watch/?v=1131784255863745
+https://www.facebook.com/reel/1612151150942907
 ```
 
-- The header must contain `videoUrl` or `url` (case-insensitive). `durationSeconds` is optional and
-  only improves the cost estimate.
+- The header must contain `videoUrl` or `url` (case-insensitive). Extra columns, such as a
+  `durationSeconds` left over from another tool, are ignored.
 - Blank lines are skipped. `rowId` is the **CSV line number**, so a duplicated URL stays traceable
   to its input line.
 - Every row is validated before the first Run. One bad row aborts the whole batch with exit 2 and a
@@ -26,7 +26,7 @@ python3 examples/python/batch_download.py sample-data/videos.csv
 ```text
 CSV: sample-data/videos.csv
 Rows: 3
-Estimate: 3 video(s), 3 billed minute(s), FREE tier -> $0.0165 estimated
+Estimate: 3 video(s) -> $0.0150 estimated ($0.0050 per result)
 Output: /repo/downloads
 Plan only. No Run was created and no token was read.
 ```
@@ -49,13 +49,13 @@ batch. Mode 0600.
 
 ```json
 {
-  "generatedAt": "2026-10-28T05:27:17Z",
-  "actorId": "apple_yang/facebook-transcript-scraper-api",
-  "build": "0.0.18",
+  "generatedAt": "2026-11-20T05:27:17Z",
+  "actorId": "apple_yang/facebook-video-audio-downloader",
+  "build": "0.0.17",
   "source": "/repo/sample-data/videos.csv",
   "outputDir": "/repo/downloads",
-  "estimate": { "videos": 2, "billedMinutes": 2, "totalUsd": 0.011 },
-  "counts": { "success": 2, "no_transcript": 0, "download_failed": 0, "processed": 2, "failed": 0 },
+  "estimate": { "videos": 3, "resultUsd": 0.005, "totalUsd": 0.015 },
+  "counts": { "success": 3, "actor_error": 0, "processed": 3, "failed": 0 },
   "results": [
     {
       "rowId": "2",
@@ -63,21 +63,19 @@ batch. Mode 0600.
       "runId": "CSLnsRnS9xsbaxc6J",
       "outputDir": "/repo/downloads/watch-1131784255863745-...",
       "assets": [{ "kind": "video", "bytes": 4382219, "sha256": "…", "skipped": false }],
-      "segments": 13,
       "exitCode": 0
     }
   ]
 }
 ```
 
-`counts.failed` excludes `no_transcript`: a silent video that downloaded correctly is a success.
+`counts.failed` is the number of rows whose exit code is non-zero; a row is a success only when its
+status is `success` and the media was written or already present.
 
 The batch process itself exits **1** when any row ends with a non-zero `exitCode`, **2** on a
 configuration error before the first Run, and **0** only when every row succeeded. The per-row codes
 are preserved in `results[].exitCode`, so a CI job can tell an `actor_error` (4) from a
-`download_failed` (11). A live example: a two-row run returned `success` for a `watch` URL and
-`actor_error` (`no audio url found`) for a `reel` URL, exiting 1 — see
-[the live run record](audit/live_run_download_20261028.md).
+`download_failed` (11).
 
 ## Re-running after a partial failure
 
